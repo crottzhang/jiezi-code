@@ -27,6 +27,10 @@ const PATHS = {
   play: "M5 3.5v9l7-4.5z",
   edit: "M10.5 2.5l3 3-8 8h-3v-3zM9 4l3 3",
   clearAll:"M2.5 4h11M2.5 7.5h7M2.5 11h4M9.5 10l3.5 3.5M13 10l-3.5 3.5",
+  newFile: "M8.5 1.5h-4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3.5M8.5 1.5l4 4v2M8.5 1.5v4h4M12 10v5M9.5 12.5h5",
+  newFolder: "M7.5 13.5h-5v-10h4l1.5 1.5h6v3M12 9v5M9.5 11.5h5",
+  collapseFolders: "M5.5 3.5v-1h8v8h-1M2.5 5.5h8v8h-8zM4.5 9.5h4",
+  chevronRight: "m6.5 4.5 3.5 3.5-3.5 3.5",
 } as const;
 
 defineProps<{ name: keyof typeof PATHS }>();

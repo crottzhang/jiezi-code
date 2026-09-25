@@ -35,6 +35,7 @@ const QUIET: &[&str] = &[
     "ls-files",
     "hash-object",
     "remote",
+    "check-ignore",
 ];
 
 #[derive(Clone, Serialize)]
@@ -146,7 +147,16 @@ pub(crate) fn spawn_error(e: std::io::Error) -> String {
 }
 
 /// 执行 git，成功返回 stdout；失败返回 git 的错误输出
-pub(crate) fn run(mut cmd: Command, input: Option<&[u8]>) -> Result<Vec<u8>, String> {
+pub(crate) fn run(cmd: Command, input: Option<&[u8]>) -> Result<Vec<u8>, String> {
+    run_codes(cmd, input, &[0])
+}
+
+/// 同 `run`，但退出码在 `ok_codes` 里都算成功（比如 check-ignore 没有匹配时返回 1）
+pub(crate) fn run_codes(
+    mut cmd: Command,
+    input: Option<&[u8]>,
+    ok_codes: &[i32],
+) -> Result<Vec<u8>, String> {
     let started = Instant::now();
     if input.is_some() {
         cmd.stdin(Stdio::piped());
@@ -159,7 +169,7 @@ pub(crate) fn run(mut cmd: Command, input: Option<&[u8]>) -> Result<Vec<u8>, Str
     }
     let out = child.wait_with_output().map_err(|e| e.to_string())?;
     let stderr = String::from_utf8_lossy(&out.stderr);
-    if out.status.success() {
+    if out.status.code().is_some_and(|c| ok_codes.contains(&c)) {
         // 成功时 stdout 可能是文件内容等大块数据，日志里只记 stderr 里的提示
         log_command(&cmd, started, true, &stderr);
         return Ok(out.stdout);

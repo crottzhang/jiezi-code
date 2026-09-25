@@ -1,4 +1,6 @@
-use super::{blocking, git, native_path, run, run_text, with_paths};
+use super::{
+    blocking, git, git_without_literal, native_path, run, run_codes, run_text, with_paths,
+};
 use serde::Serialize;
 use std::path::Path;
 
@@ -365,6 +367,27 @@ pub async fn git_show(root: String, rev: String, path: String) -> Result<Option<
             .map(|b| b.to_vec())
             .unwrap_or(bytes);
         Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+    })
+    .await
+}
+
+/// 文件夹 `dir` 下的这些名字里，哪些被 .gitignore 忽略（资源管理器里显示成灰色）
+#[tauri::command]
+pub async fn git_check_ignore(dir: String, names: Vec<String>) -> Result<Vec<String>, String> {
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    blocking(move || {
+        // check-ignore 不支持 --literal-pathspecs；这里传的都是单纯的文件名，不受通配影响
+        let mut cmd = git_without_literal(&dir);
+        cmd.args(["check-ignore", "--stdin", "-z"]);
+        // 退出码 1 表示一个都没被忽略
+        let out = run_codes(cmd, Some(names.join("\0").as_bytes()), &[0, 1])?;
+        Ok(String::from_utf8_lossy(&out)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect())
     })
     .await
 }

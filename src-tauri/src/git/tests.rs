@@ -313,6 +313,10 @@ fn stage_content_ignore_undo_blame_revert_tag() {
     block_on(git_ignore(root.clone(), vec!["/dist/".into(), "*.log".into()])).unwrap();
     block_on(git_ignore(root.clone(), vec!["*.log".into()])).unwrap();
     assert_eq!(r.read(".gitignore"), "/dist/\n*.log\n");
+    std::fs::create_dir(r.dir.join("dist")).unwrap();
+    let names = vec!["dist".into(), "a.txt".into(), "b.log".into()];
+    assert_eq!(block_on(git_check_ignore(root.clone(), names)).unwrap(), ["dist", "b.log"]);
+    assert!(block_on(git_check_ignore(root.clone(), vec!["a.txt".into()])).unwrap().is_empty());
 
     // 逐行作者信息：未保存的内容里新加的行算“未提交”
     let blame = block_on(git_blame(root.clone(), "a.txt".into(), Some("1\n2\nnew\n3\n4\n5\n".into())))

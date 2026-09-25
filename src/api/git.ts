@@ -112,6 +112,9 @@ export const gitShow = (root: string, rev: string, path: string) =>
   invoke<string | null>("git_show", { root, rev, path });
 export const gitIgnore = (root: string, patterns: string[]) =>
   invoke<void>("git_ignore", { root, patterns });
+/** 文件夹 dir 下的这些名字里被 .gitignore 忽略的那些 */
+export const gitCheckIgnore = (dir: string, names: string[]) =>
+  invoke<string[]>("git_check_ignore", { dir, names });
 
 // ---------------- 历史 ----------------
 

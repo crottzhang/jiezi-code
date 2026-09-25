@@ -56,6 +56,7 @@ pub fn run() {
             git::status::git_undo_commit,
             git::status::git_show,
             git::status::git_ignore,
+            git::status::git_check_ignore,
             git::history::git_log,
             git::history::git_commit_files,
             git::history::git_blame,

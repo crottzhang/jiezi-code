@@ -40,6 +40,8 @@ export const workspace = reactive({
   fsVersion: 0,
   /** 加一时文件树里所有展开的目录都重新读取（比如切换分支后） */
   treeVersion: 0,
+  /** 加一时文件树折叠所有文件夹 */
+  collapseVersion: 0,
 });
 
 const editorListener = EditorView.updateListener.of((u) => {
