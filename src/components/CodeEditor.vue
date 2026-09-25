@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { EditorView } from "@codemirror/view";
+import { showEditorMenu } from "../editor/contextMenu";
 import { tabId } from "../editor/setup";
 import { setEditorView } from "../editor/view";
-import { getState, scrollSnapshots, updateCursor, workspace } from "../store/workspace";
+import { activeTab, getState, scrollSnapshots, updateCursor, workspace } from "../store/workspace";
 
 const host = ref<HTMLElement>();
 let view: EditorView | null = null;
@@ -18,6 +19,10 @@ function show(id: number | null) {
   if (snapshot) view.dispatch({ effects: snapshot });
   updateCursor(state);
   view.focus();
+}
+
+function onContextMenu(e: MouseEvent) {
+  if (view) showEditorMenu(e, view, activeTab());
 }
 
 onMounted(() => {
@@ -38,7 +43,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="host" class="editor-host"></div>
+  <div ref="host" class="editor-host" @contextmenu="onContextMenu"></div>
 </template>
 
 <style scoped>

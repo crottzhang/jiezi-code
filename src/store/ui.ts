@@ -5,6 +5,10 @@ export type MenuItem =
       label: string;
       action: () => void;
       danger?: boolean;
+      /** 仅用于显示的快捷键 */
+      keys?: string;
+      /** 灰显，点击无效 */
+      disabled?: boolean;
     }
   /** 分隔线 */
   | { separator: true };

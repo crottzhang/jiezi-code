@@ -6,6 +6,7 @@ import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import type { MergeView } from "@codemirror/merge";
 import { baseName } from "../api/fs";
+import { showEditorMenu } from "../editor/contextMenu";
 import { loadLanguage } from "../editor/setup";
 import { themeExtension } from "../editor/theme";
 import { setEditorView } from "../editor/view";
@@ -83,6 +84,13 @@ async function build() {
   view.b.focus();
 }
 
+/** 右边对应标签页；左边是对比版本，只有复制、查找这类菜单项 */
+function onContextMenu(e: MouseEvent) {
+  const target = e.target as Node;
+  if (view?.b.dom.contains(target)) showEditorMenu(e, view.b, activeTab());
+  else if (view?.a.dom.contains(target)) showEditorMenu(e, view.a);
+}
+
 onMounted(() => {
   build();
   watch(() => [workspace.active, activeTab()?.diff?.rev, activeTab()?.diff?.rel], build);
@@ -95,7 +103,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="host" class="split-host"></div>
+  <div ref="host" class="split-host" @contextmenu="onContextMenu"></div>
 </template>
 
 <style scoped>

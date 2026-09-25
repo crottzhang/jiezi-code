@@ -86,7 +86,8 @@ function onKeyDown(e: KeyboardEvent) {
   e.stopPropagation();
 }
 
-// 只在编辑器和输入框里保留系统右键菜单（剪切/复制/粘贴）；终端自己处理右键
+// 只在输入框和其他零散的编辑器里保留系统右键菜单（剪切/复制/粘贴）；
+// 主编辑器、左右对比、终端都有自己的右键菜单
 function onContextMenu(e: MouseEvent) {
   if (!(e.target as Element).closest(".cm-editor, input, textarea")) e.preventDefault();
 }

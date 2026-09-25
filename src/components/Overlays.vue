@@ -86,8 +86,13 @@ function runMenuItem(action: () => void) {
     <ul ref="menuEl" class="menu" :style="menuStyle" @mousedown.stop>
       <template v-for="(item, i) in ui.menu.items" :key="i">
         <li v-if="'separator' in item" class="sep"></li>
-        <li v-else :class="{ danger: item.danger }" @click="runMenuItem(item.action)">
-          {{ item.label }}
+        <li
+          v-else
+          :class="{ danger: item.danger, disabled: item.disabled }"
+          @click="item.disabled || runMenuItem(item.action)"
+        >
+          <span class="label">{{ item.label }}</span>
+          <span v-if="item.keys" class="keys">{{ item.keys }}</span>
         </li>
       </template>
     </ul>
@@ -154,8 +159,21 @@ function runMenuItem(action: () => void) {
   border: 1px solid var(--widget-border);
 }
 .menu li {
+  display: flex;
+  gap: 24px;
   padding: 4px 16px;
   cursor: pointer;
+  white-space: nowrap;
+}
+.menu .label {
+  flex: 1;
+}
+.menu .keys {
+  color: var(--fg-muted);
+}
+.menu li.disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .menu li.sep {
   height: 1px;
@@ -164,11 +182,14 @@ function runMenuItem(action: () => void) {
   background: var(--widget-border);
   cursor: default;
 }
-.menu li:not(.sep):hover {
+.menu li:not(.sep, .disabled):hover {
   background: var(--menu-hover-bg);
   color: var(--menu-hover-fg);
 }
-.menu li.danger:hover {
+.menu li:not(.sep, .disabled):hover .keys {
+  color: inherit;
+}
+.menu li.danger:not(.disabled):hover {
   background: var(--danger);
   color: #fff;
 }
