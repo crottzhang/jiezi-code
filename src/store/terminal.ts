@@ -1,4 +1,5 @@
 import { nextTick, reactive } from "vue";
+import { dirName } from "../api/fs";
 
 export interface TermInfo {
   key: number;
@@ -6,6 +7,8 @@ export interface TermInfo {
   exited: boolean;
   /** 运行视图启动的终端：shell 就绪后自动输入这条命令 */
   command?: string;
+  /** 工作目录，默认是打开的文件夹 */
+  cwd?: string;
 }
 
 export const terminal = reactive({
@@ -62,11 +65,16 @@ export const nextTerminalKey = () => ++seq;
 
 let panelSeq = 0;
 
-export function newTerminal() {
+export function newTerminal(cwd?: string) {
   const key = nextTerminalKey();
-  terminal.sessions.push({ key, title: `PowerShell ${++panelSeq}`, exited: false });
+  terminal.sessions.push({ key, title: `PowerShell ${++panelSeq}`, exited: false, cwd });
   terminal.active = key;
   terminal.visible = true;
+}
+
+/** 在集成终端中打开：新建一个终端，工作目录是这个文件夹（文件则是它所在的文件夹） */
+export function openInTerminal(path: string, isDir: boolean) {
+  newTerminal(isDir ? path : dirName(path));
 }
 
 export function markExited(key: number) {

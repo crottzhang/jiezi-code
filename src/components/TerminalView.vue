@@ -207,7 +207,7 @@ onMounted(async () => {
 
   try {
     const newId = await spawnTerminal({
-      cwd: workspace.root,
+      cwd: props.info.cwd ?? workspace.root,
       cols: term.cols,
       rows: term.rows,
       onData: (data) => {

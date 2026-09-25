@@ -112,6 +112,37 @@ pub async fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 在系统文件管理器中显示文件或文件夹（文件会被选中）
+#[tauri::command]
+pub async fn reveal_path(path: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Err(format!("路径不存在：{path}"));
+    }
+    reveal(target).spawn().map_err(err)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+pub(crate) fn reveal(target: &Path) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new("explorer");
+    if target.is_file() {
+        // explorer 只认 /select,"路径" 这种写法，自动加引号会把整个参数包起来导致失败
+        cmd.raw_arg(format!("/select,\"{}\"", target.display()));
+    } else {
+        cmd.arg(target);
+    }
+    cmd
+}
+
+#[cfg(not(windows))]
+pub(crate) fn reveal(target: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" });
+    cmd.arg(if target.is_file() { target.parent().unwrap_or(target) } else { target });
+    cmd
+}
+
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
     write_atomic(Path::new(&path), content.as_bytes()).map_err(err)

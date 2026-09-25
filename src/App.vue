@@ -13,6 +13,7 @@ import {
   cycleTab,
   openFolder,
   openFile,
+  revealInExplorer,
   saveAll,
   saveFile,
   workspace,
@@ -74,6 +75,7 @@ function onKeyDown(e: KeyboardEvent) {
   else if (inTerminal) return;
   else if (ctrl && !e.shiftKey && key === "g") openPalette(":");
   else if (ctrl && e.altKey && key === "s") saveAll();
+  else if (!ctrl && e.shiftKey && e.altKey && key === "r") revealInExplorer();
   else if (ctrl && key === "s") saveFile();
   else if (ctrl && key === "w") closeTab();
   else if (ctrl && !e.shiftKey && key === "o") openFolder();

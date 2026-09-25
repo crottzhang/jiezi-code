@@ -51,6 +51,8 @@ export function buildAppMenu(): MenuNode[] {
         cmd("file.save"),
         cmd("file.saveAll"),
         SEP,
+        cmd("file.reveal"),
+        SEP,
         cmd("file.closeEditor"),
         cmd("file.closeFolder"),
         cmd("file.closeWindow"),

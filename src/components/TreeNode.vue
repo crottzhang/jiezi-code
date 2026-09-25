@@ -4,7 +4,8 @@ import { dirName, readDir, type DirEntry } from "../api/fs";
 import { gitCheckIgnore } from "../api/git";
 import { addToGitignore, decorationOf, describeStatus, git as gitState } from "../store/git";
 import { showFileHistory } from "../store/history";
-import { showMenu, toast, type MenuItem } from "../store/ui";
+import { openInTerminal } from "../store/terminal";
+import { SEPARATOR, showMenu, toast, type MenuItem } from "../store/ui";
 import {
   activeTab,
   deletePath,
@@ -15,6 +16,7 @@ import {
   previewImage,
   previewMarkdown,
   renamePath,
+  revealInExplorer,
   workspace,
 } from "../store/workspace";
 import FileIcon from "./FileIcon.vue";
@@ -132,6 +134,10 @@ function onContextMenu(e: MouseEvent) {
     items.push({ label: "添加到 .gitignore", action: () => addToGitignore(path, isDir) });
   }
   items.push(
+    SEPARATOR,
+    { label: "在文件资源管理器中显示", keys: "Shift+Alt+R", action: () => revealInExplorer(path) },
+    { label: "在集成终端中打开", action: () => openInTerminal(path, isDir) },
+    SEPARATOR,
     { label: "重命名", action: () => renamePath(path) },
     { label: "复制路径", action: () => navigator.clipboard.writeText(path) },
     { label: "删除", action: () => deletePath(path), danger: true },

@@ -439,3 +439,10 @@ export async function deletePath(path: string) {
     toast(e);
   }
 }
+
+/** 在系统文件管理器中显示，不传路径时显示当前标签页的文件 */
+export function revealInExplorer(path?: string) {
+  const tab = activeTab();
+  const target = path ?? (tab && !tab.readonly ? tab.path : undefined);
+  if (target) fsApi.revealPath(target).catch(toast);
+}

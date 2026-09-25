@@ -3,7 +3,8 @@ import { nextTick, ref, watch } from "vue";
 import { closeDiff } from "../store/diff";
 import { git } from "../store/git";
 import { showFileHistory } from "../store/history";
-import { showMenu, type MenuItem } from "../store/ui";
+import { openInTerminal } from "../store/terminal";
+import { SEPARATOR, showMenu, type MenuItem } from "../store/ui";
 import {
   closeTab,
   isMarkdownFile,
@@ -12,6 +13,7 @@ import {
   openFile,
   previewImage,
   previewMarkdown,
+  revealInExplorer,
   workspace,
   type Tab,
 } from "../store/workspace";
@@ -53,6 +55,13 @@ function onContextMenu(e: MouseEvent, tab: Tab) {
   }
   if (tab.diff) items.push({ label: "关闭对比", action: () => closeDiff(tab.id) });
   if (git.status) items.push({ label: "查看文件历史", action: () => showFileHistory(tab.path) });
+  if (!tab.readonly) {
+    items.push(
+      SEPARATOR,
+      { label: "在文件资源管理器中显示", keys: "Shift+Alt+R", action: () => revealInExplorer(tab.path) },
+      { label: "在集成终端中打开", action: () => openInTerminal(tab.path, false) },
+    );
+  }
   showMenu(e, items);
 }
 </script>

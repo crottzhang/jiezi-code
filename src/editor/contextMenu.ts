@@ -4,8 +4,16 @@ import type { EditorView } from "@codemirror/view";
 import { closeDiff, goToChunk } from "../store/diff";
 import { git, relPath } from "../store/git";
 import { showFileHistory } from "../store/history";
+import { openInTerminal } from "../store/terminal";
 import { openPalette, SEPARATOR, showMenu, toast, type MenuItem } from "../store/ui";
-import { isMarkdownFile, isSvgFile, previewImage, previewMarkdown, type Tab } from "../store/workspace";
+import {
+  isMarkdownFile,
+  isSvgFile,
+  previewImage,
+  previewMarkdown,
+  revealInExplorer,
+  type Tab,
+} from "../store/workspace";
 
 /** 选中的文本，多处选区按换行拼接（和 CodeMirror 自己复制时一致） */
 function selectedText(view: EditorView) {
@@ -95,6 +103,10 @@ export function showEditorMenu(e: MouseEvent, view: EditorView, tab?: Tab) {
     if (isMarkdownFile(tab.path)) items.push({ label: "打开预览", action: () => previewMarkdown(tab.path) });
     if (isSvgFile(tab.path)) items.push({ label: "预览图片", action: () => previewImage(tab.path) });
     if (rel) items.push({ label: "查看文件历史", action: () => showFileHistory(tab.path) });
+    items.push(
+      { label: "在文件资源管理器中显示", keys: "Shift+Alt+R", action: () => revealInExplorer(tab.path) },
+      { label: "在集成终端中打开", action: () => openInTerminal(tab.path, false) },
+    );
     items.push({ label: "复制路径", action: () => navigator.clipboard.writeText(tab.path).catch(toast) });
     if (rel) items.push({ label: "复制相对路径", action: () => navigator.clipboard.writeText(rel).catch(toast) });
   }

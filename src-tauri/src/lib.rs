@@ -38,6 +38,7 @@ pub fn run() {
             fs::read_file,
             fs::read_file_bytes,
             fs::open_external,
+            fs::reveal_path,
             fs::write_file,
             fs::create_entry,
             fs::rename_entry,

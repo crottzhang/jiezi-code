@@ -12,7 +12,9 @@ export const readFile = (path: string) => invoke<string>("read_file", { path });
 export const readFileBytes = (path: string) => invoke<ArrayBuffer>("read_file_bytes", { path });
 /** 用系统默认浏览器打开网址，只支持 http、https、mailto */
 export const openExternal = (url: string) => invoke<void>("open_external", { url });
-export const writeFile = (path: string, content: string) =>
+/** 在系统文件管理器中显示文件或文件夹（文件会被选中） */
+export const revealPath = (path: string) => invoke<void>("reveal_path", { path });
+export const writeFile =(path: string, content: string) =>
   invoke<void>("write_file", { path, content });
 export const createEntry = (dir: string, name: string, isDir: boolean) =>
   invoke<string>("create_entry", { dir, name, isDir });

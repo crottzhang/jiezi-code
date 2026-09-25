@@ -154,26 +154,6 @@ pub async fn reveal_clipboard_image(name: Option<String>) -> Result<(), String> 
         Some(name) => image_path(&name)?,
         None => clipboard_dir()?,
     };
-    reveal(&target).spawn().map_err(err)?;
+    crate::fs::reveal(&target).spawn().map_err(err)?;
     Ok(())
-}
-
-#[cfg(windows)]
-fn reveal(target: &Path) -> std::process::Command {
-    use std::os::windows::process::CommandExt;
-    let mut cmd = std::process::Command::new("explorer");
-    if target.is_file() {
-        // explorer 只认 /select,"路径" 这种写法，自动加引号会把整个参数包起来导致失败
-        cmd.raw_arg(format!("/select,\"{}\"", target.display()));
-    } else {
-        cmd.arg(target);
-    }
-    cmd
-}
-
-#[cfg(not(windows))]
-fn reveal(target: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" });
-    cmd.arg(if target.is_file() { target.parent().unwrap_or(target) } else { target });
-    cmd
 }

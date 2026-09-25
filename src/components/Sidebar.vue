@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { baseName } from "../api/fs";
-import { showMenu } from "../store/ui";
-import { newEntry, openFolder, refreshDir, workspace } from "../store/workspace";
+import { openInTerminal } from "../store/terminal";
+import { SEPARATOR, showMenu } from "../store/ui";
+import { newEntry, openFolder, refreshDir, revealInExplorer, workspace } from "../store/workspace";
 import Icon from "./Icon.vue";
 import TreeNode from "./TreeNode.vue";
 
@@ -17,6 +18,9 @@ function onContextMenu(e: MouseEvent) {
   showMenu(e, [
     { label: "新建文件", action: () => newEntry(dir, false) },
     { label: "新建文件夹", action: () => newEntry(dir, true) },
+    SEPARATOR,
+    { label: "在文件资源管理器中显示", action: () => revealInExplorer(dir) },
+    { label: "在集成终端中打开", action: () => openInTerminal(dir, true) },
   ]);
 }
 </script>
