@@ -49,7 +49,16 @@ pub(super) fn parse_log(out: &[u8]) -> Vec<GitCommit> {
         .collect()
 }
 
-/// 提交历史，分页读取。`rev` 为 None 时是当前分支；给了 `path` 时只列出改动过这个文件的提交（跟随重命名）
+/// 提交信息、作者（名字或邮箱）或哈希前缀里包含 `query`，不区分大小写。`query` 须已转成小写
+fn commit_matches(c: &GitCommit, query: &str) -> bool {
+    c.hash.starts_with(query)
+        || [&c.subject, &c.body, &c.author, &c.email]
+            .iter()
+            .any(|s| s.to_lowercase().contains(query))
+}
+
+/// 提交历史，分页读取。`rev` 为 None 时是当前分支；给了 `path` 时只列出改动过这个文件的提交（跟随重命名）；
+/// 给了 `query` 时只列出匹配的提交（见 [`commit_matches`]），skip/limit 按过滤后的结果计算
 #[tauri::command]
 pub async fn git_log(
     root: String,
@@ -57,31 +66,42 @@ pub async fn git_log(
     limit: u32,
     path: Option<String>,
     rev: Option<String>,
+    query: Option<String>,
 ) -> Result<Vec<GitCommit>, String> {
     if let Some(rev) = &rev {
         check_arg(rev, "分支")?;
     }
+    let query = query
+        .map(|q| q.trim().to_lowercase())
+        .filter(|q| !q.is_empty());
     blocking(move || {
         let mut cmd = git(&root);
-        cmd.env("LC_ALL", "C").args([
-            "log",
-            "-z",
-            LOG_FORMAT,
-            &format!("--skip={skip}"),
-            &format!("--max-count={limit}"),
-        ]);
+        cmd.env("LC_ALL", "C").args(["log", "-z", LOG_FORMAT]);
+        // 搜索时要在 Rust 这边过滤，只能读出全部提交再分页
+        if query.is_none() {
+            cmd.args([format!("--skip={skip}"), format!("--max-count={limit}")]);
+        }
         if let Some(rev) = &rev {
             cmd.arg(rev);
         }
         if let Some(path) = &path {
             cmd.args(["--follow", "--", path]);
         }
-        match run(cmd, None) {
-            Ok(out) => Ok(parse_log(&out)),
+        let commits = match run(cmd, None) {
+            Ok(out) => parse_log(&out),
             // 还没有任何提交
-            Err(e) if e.contains("does not have any commits") => Ok(Vec::new()),
-            Err(e) => Err(e),
-        }
+            Err(e) if e.contains("does not have any commits") => Vec::new(),
+            Err(e) => return Err(e),
+        };
+        Ok(match &query {
+            Some(q) => commits
+                .into_iter()
+                .filter(|c| commit_matches(c, q))
+                .skip(skip as usize)
+                .take(limit as usize)
+                .collect(),
+            None => commits,
+        })
     })
     .await
 }

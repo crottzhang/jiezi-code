@@ -115,14 +115,26 @@ export const gitIgnore = (root: string, patterns: string[]) =>
 
 // ---------------- 历史 ----------------
 
-/** 提交历史；rev 为空时是当前分支，path 为仓库内相对路径时只列出改动过这个文件的提交 */
+/**
+ * 提交历史；rev 为空时是当前分支，path 为仓库内相对路径时只列出改动过这个文件的提交，
+ * query 不为空时只列出提交信息、作者或哈希匹配的提交
+ */
 export const gitLog = (
   root: string,
   skip: number,
   limit: number,
   path?: string | null,
   rev?: string | null,
-) => invoke<GitCommit[]>("git_log", { root, skip, limit, path: path ?? null, rev: rev ?? null });
+  query?: string | null,
+) =>
+  invoke<GitCommit[]>("git_log", {
+    root,
+    skip,
+    limit,
+    path: path ?? null,
+    rev: rev ?? null,
+    query: query || null,
+  });
 export const gitCommitFiles = (root: string, hash: string) =>
   invoke<CommitFile[]>("git_commit_files", { root, hash });
 /** content 是编辑器里的当前内容；文件没被跟踪时返回 null */

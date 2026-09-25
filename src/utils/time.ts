@@ -8,9 +8,21 @@ export function relativeTime(seconds: number) {
   return formatTime(seconds, false);
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** 简短的时间：今天显示时分秒，今年显示月日，更早显示年月 */
+export function shortTime(seconds: number) {
+  const d = new Date(seconds * 1000);
+  const now = new Date();
+  if (d.getFullYear() !== now.getFullYear()) return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  if (d.getMonth() !== now.getMonth() || d.getDate() !== now.getDate()) {
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export function formatTime(seconds: number, withTime = true) {
   const d = new Date(seconds * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  return withTime ? `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}` : date;
+  return withTime ? `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : date;
 }

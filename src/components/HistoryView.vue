@@ -2,32 +2,23 @@
 import { baseName, dirName } from "../api/fs";
 import type { CommitFile, GitCommit } from "../api/git";
 import { createBranchAt } from "../store/branches";
-import { describeStatus, git, kindOf } from "../store/git";
+import { describeStatus, kindOf } from "../store/git";
 import {
   cherryPickCommit,
   clearFileHistory,
   formatTime,
   history,
   loadHistory,
+  showCurrentBranchHistory,
   openCommitFile,
   pickHistoryBranch,
-  relativeTime,
   revertCommit,
+  shortTime,
   tagCommit,
   toggleCommit,
 } from "../store/history";
 import { SEPARATOR, showMenu, type MenuItem } from "../store/ui";
 import Icon from "./Icon.vue";
-
-type RefKind = "head" | "tag" | "remote" | "branch";
-
-/** "HEAD -> master" 显示成当前分支，"tag: v1" 显示成标签 */
-function parseRef(ref: string): { label: string; kind: RefKind } {
-  if (ref.startsWith("HEAD -> ")) return { label: ref.slice(8), kind: "head" };
-  if (ref === "HEAD") return { label: "HEAD", kind: "head" };
-  if (ref.startsWith("tag: ")) return { label: ref.slice(5), kind: "tag" };
-  return { label: ref, kind: ref.includes("/") ? "remote" : "branch" };
-}
 
 function tooltip(c: GitCommit) {
   const text = c.body ? `${c.subject}\n\n${c.body}` : c.subject;
@@ -37,6 +28,12 @@ function tooltip(c: GitCommit) {
 function fileDetail(f: CommitFile) {
   const dir = dirName(f.path);
   return f.origPath ? `${dir ? dir + " · " : ""}由 ${baseName(f.origPath)} 重命名` : dir;
+}
+
+function onGroupMenu(e: MouseEvent) {
+  const items: MenuItem[] = [{ label: "查看其他分支的历史…", action: () => pickHistoryBranch() }];
+  if (history.rev) items.push({ label: "回到当前分支的历史", action: () => showCurrentBranchHistory() });
+  showMenu(e, items);
 }
 
 function onCommitMenu(e: MouseEvent, c: GitCommit) {
@@ -58,22 +55,26 @@ function onCommitMenu(e: MouseEvent, c: GitCommit) {
 
 <template>
   <section class="history">
-    <div class="group" @click="history.open = !history.open">
+    <div class="group" @click="history.open = !history.open" @contextmenu="onGroupMenu">
       <span class="twisty" :class="{ open: history.open }">›</span>
       <span class="group-title">历史记录</span>
-      <button
-        class="branch-chip"
-        :title="history.rev ? `正在看 ${history.rev} 的历史，点击切换` : '点击查看其他分支的历史'"
-        @click.stop="pickHistoryBranch()"
-      >
-        {{ history.rev ?? git.status?.branch ?? "HEAD" }}
-      </button>
+      <span class="search" @click.stop>
+        <input
+          v-model="history.query"
+          placeholder="搜索提交、作者、SHA"
+          spellcheck="false"
+          @keydown.esc="history.query = ''"
+        />
+        <button v-if="history.query" title="清除搜索" @click="history.query = ''"><Icon name="close" /></button>
+      </span>
+      <!-- 只在看其他分支时显示；当前分支名底部状态栏已经有了 -->
+      <span v-if="history.rev" class="filter" :title="`正在看 ${history.rev} 的历史，点击切换`" @click.stop>
+        <span class="filter-name" @click="pickHistoryBranch()">{{ history.rev }}</span>
+        <button title="回到当前分支的历史" @click="showCurrentBranchHistory()"><Icon name="close" /></button>
+      </span>
       <span v-if="history.filter" class="filter" :title="`只显示改动过 ${history.filter} 的提交`" @click.stop>
         <span class="filter-name">{{ baseName(history.filter) }}</span>
         <button title="显示全部提交" @click="clearFileHistory()"><Icon name="close" /></button>
-      </span>
-      <span class="actions" @click.stop>
-        <button title="刷新历史记录" @click="loadHistory()"><Icon name="refresh" /></button>
       </span>
     </div>
 
@@ -88,14 +89,7 @@ function onCommitMenu(e: MouseEvent, c: GitCommit) {
         >
           <span class="twisty" :class="{ open: history.expanded[c.hash] }">›</span>
           <span class="subject">{{ c.subject }}</span>
-          <span
-            v-for="r in c.refs.map(parseRef)"
-            :key="r.label"
-            class="ref"
-            :class="r.kind"
-            >{{ r.label }}</span
-          >
-          <span class="time">{{ relativeTime(c.time) }}</span>
+          <span class="time">{{ shortTime(c.time) }}</span>
         </div>
 
         <template v-if="history.expanded[c.hash]">
@@ -122,7 +116,13 @@ function onCommitMenu(e: MouseEvent, c: GitCommit) {
       </div>
 
       <p v-if="!history.loading && history.commits.length === 0" class="note">
-        {{ history.filter ? "这个文件还没有提交记录。" : "还没有任何提交。" }}
+        {{
+          history.query.trim()
+            ? "没有匹配的提交。"
+            : history.filter
+              ? "这个文件还没有提交记录。"
+              : "还没有任何提交。"
+        }}
       </p>
       <button v-if="history.loading" class="more" disabled>正在读取…</button>
       <button v-else-if="!history.done" class="more" @click="loadHistory(false)">加载更多</button>
@@ -168,16 +168,51 @@ function onCommitMenu(e: MouseEvent, c: GitCommit) {
   transform: rotate(90deg);
 }
 .group-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.actions {
-  display: none;
   flex: none;
+  margin-right: 6px;
 }
-.group:hover .actions {
+.search {
   display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  height: 18px;
+  margin-right: 4px;
+  border: 1px solid var(--border-input);
+  border-radius: 9px;
+  background: var(--bg-input);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.search:focus-within {
+  border-color: var(--accent);
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 7px;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--fg-strong);
+  font: inherit;
+  font-size: 12px;
+  user-select: text;
+}
+.search input::placeholder {
+  color: var(--fg-muted);
+}
+.search button {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+}
+.search .icon {
+  width: 12px;
+  height: 12px;
 }
 button {
   width: 22px;
@@ -190,28 +225,11 @@ button:hover {
   color: var(--fg-strong);
 }
 
-.branch-chip {
-  display: block;
-  width: auto;
-  max-width: 40%;
-  height: 18px;
-  margin-right: 4px;
-  padding: 0 7px;
-  border-radius: 9px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--bg-input);
-  font-weight: normal;
-  text-transform: none;
-  letter-spacing: 0;
-  line-height: 18px;
-  color: var(--fg);
-}
 .filter {
   display: flex;
+  flex: none;
   align-items: center;
-  max-width: 55%;
+  max-width: 35%;
   height: 18px;
   margin-right: 4px;
   padding-left: 7px;
@@ -247,28 +265,6 @@ button:hover {
 }
 .commit.expanded .subject {
   color: var(--fg-strong);
-}
-.ref {
-  flex: none;
-  max-width: 40%;
-  margin-left: 6px;
-  padding: 0 6px;
-  border: 1px solid var(--border-input);
-  border-radius: 9px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--fg-muted);
-}
-.ref.head {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-.ref.tag {
-  border-color: var(--git-modified);
-  color: var(--git-modified);
 }
 .time {
   flex: none;

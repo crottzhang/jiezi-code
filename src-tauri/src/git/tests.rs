@@ -179,7 +179,7 @@ fn basic_round_trip() {
     block_on(git_discard(root.clone(), vec![name.into()], vec![])).unwrap();
     assert_eq!(r.read(name), "one\n");
 
-    let log = block_on(git_log(root.clone(), 0, 50, None, None)).unwrap();
+    let log = block_on(git_log(root.clone(), 0, 50, None, None, None)).unwrap();
     assert_eq!((log[0].subject.as_str(), log[0].body.as_str()), ("第一次提交", "正文"));
     assert!(log[0].refs.iter().any(|x| x.starts_with("HEAD -> ")));
     let files = block_on(git_commit_files(root.clone(), log[0].hash.clone())).unwrap();
@@ -189,7 +189,7 @@ fn basic_round_trip() {
     r.sh(&["mv", name, "renamed.txt"]);
     r.write("other.txt", "x\n");
     r.commit_all("second");
-    let log = block_on(git_log(root.clone(), 0, 50, None, None)).unwrap();
+    let log = block_on(git_log(root.clone(), 0, 50, None, None, None)).unwrap();
     assert_eq!(log[0].parents, [log[1].hash.clone()]);
     let mut files = block_on(git_commit_files(root.clone(), log[0].hash.clone())).unwrap();
     files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -198,18 +198,27 @@ fn basic_round_trip() {
         .map(|f| (f.path.as_str(), f.orig_path.as_deref(), f.status))
         .collect();
     assert_eq!(summary, [("other.txt", None, 'A'), ("renamed.txt", Some(name), 'R')]);
-    let followed = block_on(git_log(root.clone(), 0, 50, Some("renamed.txt".into()), None)).unwrap();
+    let followed = block_on(git_log(root.clone(), 0, 50, Some("renamed.txt".into()), None, None)).unwrap();
     assert_eq!(followed.len(), 2);
-    let paged = block_on(git_log(root.clone(), 1, 50, None, None)).unwrap();
+    let paged = block_on(git_log(root.clone(), 1, 50, None, None, None)).unwrap();
     assert_eq!(paged[0].hash, log[1].hash);
+
+    // 按提交信息、作者、哈希搜索，不区分大小写
+    let search = |q: &str, skip| block_on(git_log(root.clone(), skip, 50, None, None, Some(q.into()))).unwrap();
+    assert_eq!(search("SECOND", 0).len(), 1);
+    assert_eq!(search("正文", 0)[0].hash, log[1].hash);
+    assert_eq!(search(&log[1].short, 0)[0].hash, log[1].hash);
+    assert_eq!(search(&log[0].author.to_uppercase(), 0).len(), 2);
+    assert_eq!(search(&log[0].author, 1)[0].hash, log[1].hash);
+    assert!(search("没有这个提交", 0).is_empty());
 
     // 从旧提交新建分支，再看另一个分支的历史
     block_on(git_checkout(root.clone(), "from-old".into(), true, Some(log[1].short.clone()), None))
         .unwrap();
     assert!(!r.dir.join("other.txt").exists());
-    let main_log = block_on(git_log(root.clone(), 0, 50, None, Some("main".into()))).unwrap();
+    let main_log = block_on(git_log(root.clone(), 0, 50, None, Some("main".into()), None)).unwrap();
     assert_eq!(main_log.len(), 2);
-    assert!(block_on(git_log(root.clone(), 0, 50, None, Some("--all".into()))).is_err());
+    assert!(block_on(git_log(root.clone(), 0, 50, None, Some("--all".into()), None)).is_err());
 
     block_on(git_commit(root.clone(), String::new(), true)).unwrap();
 }
@@ -247,7 +256,7 @@ fn branches_delete_rename_and_merge_conflict() {
     assert!(!block_on(git_op_continue(root.clone(), "merge".into(), String::new())).unwrap());
     let s = r.status();
     assert_eq!(s.operation, None);
-    let log = block_on(git_log(root.clone(), 0, 1, None, None)).unwrap();
+    let log = block_on(git_log(root.clone(), 0, 1, None, None, None)).unwrap();
     assert_eq!(log[0].parents.len(), 2);
 
     // 已合并的分支可以普通删除；重命名
@@ -325,7 +334,7 @@ fn stage_content_ignore_undo_blame_revert_tag() {
 
     // 还原提交、打标签
     r.sh(&["checkout", "--", "a.txt"]);
-    let head = block_on(git_log(root.clone(), 0, 1, None, None)).unwrap().remove(0);
+    let head = block_on(git_log(root.clone(), 0, 1, None, None, None)).unwrap().remove(0);
     assert!(!block_on(git_revert(root.clone(), head.hash.clone(), false)).unwrap());
     assert_eq!(r.read("a.txt"), "1\n2\n3\n4\n5\n");
     block_on(git_tag(root.clone(), "v1".into(), head.hash.clone(), Some("第一版".into()))).unwrap();
@@ -351,7 +360,7 @@ fn cherry_pick_conflict_and_continue() {
     block_on(git_checkout(root.clone(), "other".into(), true, None, None)).unwrap();
     r.write("a.txt", "other\n");
     r.commit_all("other change");
-    let pick = block_on(git_log(root.clone(), 0, 1, None, None)).unwrap().remove(0);
+    let pick = block_on(git_log(root.clone(), 0, 1, None, None, None)).unwrap().remove(0);
     block_on(git_checkout(root.clone(), "main".into(), false, None, None)).unwrap();
     r.write("a.txt", "main\n");
     r.commit_all("main change");
@@ -362,7 +371,7 @@ fn cherry_pick_conflict_and_continue() {
     block_on(git_stage(root.clone(), vec!["a.txt".into()])).unwrap();
     assert!(!block_on(git_op_continue(root.clone(), "cherry-pick".into(), String::new())).unwrap());
     assert_eq!(r.status().operation, None);
-    let log = block_on(git_log(root.clone(), 0, 1, None, None)).unwrap();
+    let log = block_on(git_log(root.clone(), 0, 1, None, None, None)).unwrap();
     assert_eq!(log[0].subject, "other change");
 }
 

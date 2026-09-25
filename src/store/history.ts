@@ -26,6 +26,8 @@ export const history = reactive({
   filter: null as string | null,
   /** 查看哪个分支的历史，null 为当前分支 */
   rev: null as string | null,
+  /** 搜索框里的内容：按提交信息、作者、哈希过滤 */
+  query: "",
   /** 展开查看改动文件的提交 */
   expanded: {} as Record<string, boolean>,
   /** 提交 → 改动的文件，读取中为 null */
@@ -49,7 +51,7 @@ export async function loadHistory(reset = true) {
   history.loading = true;
   try {
     const skip = reset ? 0 : history.commits.length;
-    const page = await gitApi.gitLog(root, skip, PAGE, history.filter, history.rev);
+    const page = await gitApi.gitLog(root, skip, PAGE, history.filter, history.rev, history.query.trim());
     if (id !== seq) return;
     history.commits = reset ? page : [...history.commits, ...page];
     history.done = page.length < PAGE;
@@ -78,11 +80,24 @@ watch(
   { immediate: true },
 );
 
+// 搜索框输入时稍等一下再读，免得每敲一个字都跑一次 git log
+let queryTimer: ReturnType<typeof setTimeout> | undefined;
+watch(
+  () => history.query.trim(),
+  () => {
+    clearTimeout(queryTimer);
+    queryTimer = setTimeout(() => {
+      if (history.open) loadHistory();
+    }, 250);
+  },
+);
+
 watch(
   () => workspace.root,
   () => {
     history.filter = null;
     history.rev = null;
+    history.query = "";
     history.expanded = {};
     history.files = {};
   },
@@ -148,6 +163,10 @@ export function showFileHistory(path: string) {
   history.open = true;
   layout.sidebarView = "scm";
   layout.sidebarVisible = true;
+}
+
+export function showCurrentBranchHistory() {
+  history.rev = null;
 }
 
 export function clearFileHistory() {
@@ -217,4 +236,4 @@ export async function tagCommit(c: GitCommit) {
   await runGit((root) => gitApi.gitTag(root, name, c.hash, message.trim() || null));
 }
 
-export { formatTime, relativeTime } from "../utils/time";
+export { formatTime, shortTime } from "../utils/time";

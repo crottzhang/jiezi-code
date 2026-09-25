@@ -35,7 +35,7 @@ import {
   unstage,
   type Group,
 } from "../store/git";
-import { showFileHistory } from "../store/history";
+import { history, loadHistory, showFileHistory } from "../store/history";
 import { showOutput } from "../store/output";
 import { popLatestStash, stashChanges } from "../store/stash";
 import { SEPARATOR, showMenu, type MenuItem } from "../store/ui";
@@ -90,6 +90,12 @@ const progressWidth = computed(() => {
   const p = git.progress;
   return p?.percent != null ? `${p.percent}%` : null;
 });
+
+/** 刷新状态，同时重新读取历史记录（HEAD 没变时状态刷新不会触发历史重新读取） */
+function refresh() {
+  refreshGit();
+  if (history.open) loadHistory();
+}
 
 // 提交信息输入框随内容增高
 function autosize() {
@@ -205,7 +211,7 @@ function onMoreMenu(e: MouseEvent) {
         <button title="提交 (Ctrl+Enter)" :disabled="git.busy > 0" @click="primary.run()">
           <Icon name="check" />
         </button>
-        <button title="刷新" @click="refreshGit()"><Icon name="refresh" /></button>
+        <button title="刷新" @click="refresh()"><Icon name="refresh" /></button>
         <button title="更多操作" @click="onMoreMenu"><Icon name="more" /></button>
       </template>
     </header>
