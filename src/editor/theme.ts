@@ -77,7 +77,13 @@ const editorTheme = EditorView.theme(
     },
     "&.cm-merge-b .cm-changedLineGutter": { background: "var(--git-added)" },
     "& .cm-deletedLineGutter": { background: "var(--git-deleted)" },
-    ".cm-deletedChunk .cm-chunkButtons button[name=reject]": {
+    // 左右并排对比的左边（原始版本）
+    "&.cm-merge-a .cm-changedLine": { backgroundColor: "var(--diff-removed-line)" },
+    "&.cm-merge-a .cm-changedText": { background: "var(--diff-removed-text)" },
+    "&.cm-merge-a .cm-changedLineGutter": { background: "var(--git-deleted)" },
+    // 差异块上的“暂存”“还原”按钮
+    ".cm-deletedChunk .cm-chunkButtons button": {
+      margin: "0 0 0 4px",
       padding: "0 8px",
       border: "1px solid var(--border-input)",
       borderRadius: "var(--radius)",
@@ -86,9 +92,52 @@ const editorTheme = EditorView.theme(
       font: "12px var(--font-ui)",
       lineHeight: "18px",
     },
-    ".cm-deletedChunk .cm-chunkButtons button[name=reject]:hover": {
+    ".cm-deletedChunk .cm-chunkButtons button:hover": {
       background: "var(--hover)",
       color: "var(--fg-strong)",
+    },
+
+    // 行号旁的 Git 改动标记
+    ".cm-quickDiffGutter": { width: "4px", cursor: "pointer" },
+    ".cm-quickDiffGutter .cm-gutterElement": { padding: "0" },
+    ".cm-qd-added": { boxShadow: "inset 3px 0 var(--git-added)" },
+    ".cm-qd-modified": { boxShadow: "inset 3px 0 var(--git-modified-bar)" },
+    ".cm-qd-deleted": {
+      background:
+        "linear-gradient(135deg, var(--git-deleted) 0 35%, transparent 35%) top left / 8px 8px no-repeat",
+    },
+
+    // 合并冲突
+    ".cm-conflict-marker": { backgroundColor: "var(--conflict-marker)", color: "var(--fg-muted)" },
+    ".cm-conflict-current": { backgroundColor: "var(--conflict-current)" },
+    ".cm-conflict-base": { backgroundColor: "var(--hover)" },
+    ".cm-conflict-incoming": { backgroundColor: "var(--conflict-incoming)" },
+    ".cm-conflictActions": {
+      display: "flex",
+      gap: "10px",
+      padding: "2px 0 2px 4px",
+      font: "12px var(--font-ui)",
+    },
+    ".cm-conflictActions button": {
+      padding: "0",
+      border: "none",
+      background: "none",
+      color: "var(--fg-muted)",
+      cursor: "pointer",
+      font: "inherit",
+    },
+    ".cm-conflictActions button:hover": { color: "var(--hl)", textDecoration: "underline" },
+
+    // 光标所在行末尾的作者信息
+    ".cm-blame": {
+      marginLeft: "3em",
+      color: "var(--blame-fg)",
+      fontStyle: "italic",
+      fontSize: "0.9em",
+      fontFamily: "var(--font-ui)",
+      userSelect: "none",
+      pointerEvents: "auto",
+      cursor: "default",
     },
     "& .cm-collapsedLines": {
       color: "var(--fg-muted)",

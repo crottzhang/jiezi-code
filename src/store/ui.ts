@@ -1,9 +1,19 @@
 import { reactive } from "vue";
 
-export interface MenuItem {
+export type MenuItem =
+  | {
+      label: string;
+      action: () => void;
+      danger?: boolean;
+    }
+  /** 分隔线 */
+  | { separator: true };
+
+export const SEPARATOR: MenuItem = { separator: true };
+
+export interface ToastAction {
   label: string;
-  action: () => void;
-  danger?: boolean;
+  run: () => void;
 }
 
 /** 快速选择列表里的一项 */
@@ -17,10 +27,18 @@ export const ui = reactive({
   prompt: null as null | {
     title: string;
     value: string;
+    /** 密码类输入，隐藏内容 */
+    secret: boolean;
+    placeholder: string;
     resolve: (value: string | null) => void;
   },
   menu: null as null | { x: number; y: number; items: MenuItem[] },
-  toast: null as null | { text: string; id: number },
+  toast: null as null | {
+    text: string;
+    id: number;
+    kind: "error" | "info";
+    action?: ToastAction;
+  },
   /** 快速打开面板：text 以 ">" 开头是命令，":" 开头是跳转行，否则搜索文件 */
   palette: null as null | {
     text: string;
@@ -45,12 +63,18 @@ export function closePalette() {
 }
 
 /** 顶部输入框，类似 VS Code 的 Quick Input */
-export function promptInput(title: string, value = ""): Promise<string | null> {
+export function promptInput(
+  title: string,
+  value = "",
+  options: { secret?: boolean; placeholder?: string } = {},
+): Promise<string | null> {
   ui.prompt?.resolve(null);
   return new Promise((resolve) => {
     ui.prompt = {
       title,
       value,
+      secret: options.secret ?? false,
+      placeholder: options.placeholder ?? "",
       resolve: (v) => {
         ui.prompt = null;
         resolve(v);
@@ -66,10 +90,18 @@ export function showMenu(e: MouseEvent, items: MenuItem[]) {
 }
 
 let toastId = 0;
-export function toast(text: unknown) {
+
+/** 右下角的提示。默认是错误样式；带操作按钮的提示停留得久一些 */
+export function toast(
+  text: unknown,
+  options: { kind?: "error" | "info"; action?: ToastAction } = {},
+) {
   const id = ++toastId;
-  ui.toast = { text: String(text), id };
-  setTimeout(() => {
-    if (ui.toast?.id === id) ui.toast = null;
-  }, 4000);
+  ui.toast = { text: String(text), id, kind: options.kind ?? "error", action: options.action };
+  setTimeout(
+    () => {
+      if (ui.toast?.id === id) ui.toast = null;
+    },
+    options.action ? 8000 : 4000,
+  );
 }

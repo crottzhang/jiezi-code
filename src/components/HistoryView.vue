@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { baseName, dirName } from "../api/fs";
 import type { CommitFile, GitCommit } from "../api/git";
-import { createBranchAt, describeStatus, kindOf } from "../store/git";
+import { createBranchAt } from "../store/branches";
+import { describeStatus, git, kindOf } from "../store/git";
 import {
+  cherryPickCommit,
   clearFileHistory,
   formatTime,
   history,
   loadHistory,
   openCommitFile,
+  pickHistoryBranch,
   relativeTime,
+  revertCommit,
+  tagCommit,
   toggleCommit,
 } from "../store/history";
-import { showMenu } from "../store/ui";
+import { SEPARATOR, showMenu, type MenuItem } from "../store/ui";
 import Icon from "./Icon.vue";
 
 type RefKind = "head" | "tag" | "remote" | "branch";
@@ -36,12 +41,18 @@ function fileDetail(f: CommitFile) {
 
 function onCommitMenu(e: MouseEvent, c: GitCommit) {
   const message = c.body ? `${c.subject}\n\n${c.body}` : c.subject;
-  showMenu(e, [
+  const items: MenuItem[] = [
     { label: history.expanded[c.hash] ? "收起改动的文件" : "查看改动的文件", action: () => toggleCommit(c) },
     { label: "复制提交哈希", action: () => navigator.clipboard.writeText(c.hash) },
     { label: "复制提交信息", action: () => navigator.clipboard.writeText(message) },
+    SEPARATOR,
     { label: "基于此提交新建分支…", action: () => createBranchAt(c.hash, c.short) },
-  ]);
+    { label: "在此提交上打标签…", action: () => tagCommit(c) },
+  ];
+  // 看的是其他分支的历史时，可以把提交拣选过来；当前分支上的提交可以还原
+  if (history.rev) items.push({ label: "拣选到当前分支", action: () => cherryPickCommit(c) });
+  else items.push({ label: "还原此提交（生成反向提交）", action: () => revertCommit(c) });
+  showMenu(e, items);
 }
 </script>
 
@@ -50,6 +61,13 @@ function onCommitMenu(e: MouseEvent, c: GitCommit) {
     <div class="group" @click="history.open = !history.open">
       <span class="twisty" :class="{ open: history.open }">›</span>
       <span class="group-title">历史记录</span>
+      <button
+        class="branch-chip"
+        :title="history.rev ? `正在看 ${history.rev} 的历史，点击切换` : '点击查看其他分支的历史'"
+        @click.stop="pickHistoryBranch()"
+      >
+        {{ history.rev ?? git.status?.branch ?? "HEAD" }}
+      </button>
       <span v-if="history.filter" class="filter" :title="`只显示改动过 ${history.filter} 的提交`" @click.stop>
         <span class="filter-name">{{ baseName(history.filter) }}</span>
         <button title="显示全部提交" @click="clearFileHistory()"><Icon name="close" /></button>
@@ -172,6 +190,24 @@ button:hover {
   color: var(--fg-strong);
 }
 
+.branch-chip {
+  display: block;
+  width: auto;
+  max-width: 40%;
+  height: 18px;
+  margin-right: 4px;
+  padding: 0 7px;
+  border-radius: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--bg-input);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 18px;
+  color: var(--fg);
+}
 .filter {
   display: flex;
   align-items: center;

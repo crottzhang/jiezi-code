@@ -1,26 +1,20 @@
 import { computed, reactive, watch } from "vue";
-import { ask, message } from "@tauri-apps/plugin-dialog";
-import { baseName, dirName, joinPath } from "../api/fs";
+import { listen } from "@tauri-apps/api/event";
+import { ask, message, open } from "@tauri-apps/plugin-dialog";
+import { baseName, dirName, fsWatch, joinPath, type FsChange } from "../api/fs";
 import * as gitApi from "../api/git";
-import type { GitChange, GitStatus, RemoteOp } from "../api/git";
-import { diffCompartment } from "../editor/setup";
-import { openPicker, promptInput, toast } from "./ui";
+import type { GitChange, GitOperation, GitStatus, Progress, RemoteOp } from "../api/git";
+import { showOutput, watchOutputDir } from "./output";
+import { promptInput, toast } from "./ui";
 import {
-  findTab,
-  findTabByPath,
-  getState,
-  openFile,
+  openFolder,
+  openFolderInNewWindow,
   refreshDir,
   refreshTree,
   reloadCleanTabs,
   saveAll,
-  updateTabState,
   workspace,
-  type Tab,
 } from "./workspace";
-
-/** 窗口在前台时每隔这么久查询一次状态，用来发现终端里执行的 git 命令 */
-const POLL_INTERVAL = 5000;
 
 export const git = reactive({
   /** null 表示没有打开文件夹或不是 Git 仓库 */
@@ -31,6 +25,10 @@ export const git = reactive({
   busy: 0,
   /** 提交信息草稿 */
   message: "",
+  /** 修改上次提交模式：输入框里是上次的提交信息，提交按钮变成“修改上次提交” */
+  amend: false,
+  /** 正在进行的远程操作（拉取、推送、克隆……），可以取消 */
+  progress: null as null | { id: number; label: string; phase: string; percent: number | null },
 });
 
 export type Group = "merge" | "staged" | "changes";
@@ -86,7 +84,13 @@ const LABELS: Record<string, string> = {
 export const kindOf = (letter: string) => KINDS[letter] ?? "modified";
 export const describeStatus = (letter: string) => LABELS[letter] ?? letter;
 
-/** 仓库内相对路径转成绝对路径 */
+export const OPERATION_LABELS: Record<GitOperation, string> = {
+  merge: "合并",
+  rebase: "变基",
+  "cherry-pick": "拣选提交",
+  revert: "还原提交",
+};
+
 /** 绝对路径转成仓库内的相对路径（分隔符 /），不在仓库里时返回 null */
 export function relPath(path: string) {
   const root = git.status?.root;
@@ -99,6 +103,7 @@ export function relPath(path: string) {
   return path.slice(base.length + 1).replace(/\\/g, "/");
 }
 
+/** 仓库内相对路径转成绝对路径 */
 export function absPath(rel: string) {
   const root = git.status!.root;
   return joinPath(root, root.includes("\\") ? rel.replace(/\//g, "\\") : rel);
@@ -141,8 +146,7 @@ export const decorationOf = (path: string) => decorations.value.get(path.toLower
 // ---------------- 刷新 ----------------
 
 let refreshSeq = 0;
-let refreshing = false;
-/** 轮询时同样的错误只提示一次 */
+/** 同样的错误只提示一次 */
 let lastError = "";
 
 export async function refreshGit() {
@@ -153,13 +157,12 @@ export async function refreshGit() {
     git.loaded = true;
     return;
   }
-  refreshing = true;
   try {
     const status = await gitApi.gitStatus(dir);
     if (seq !== refreshSeq) return;
     // 仓库根目录就是打开的文件夹时沿用文件夹路径的写法，保证路径和资源管理器、标签页一致
     if (status && status.root.toLowerCase() === dir.toLowerCase()) status.root = dir;
-    // 没有变化时不替换，避免列表和文件树无意义地重新渲染
+    // 没有变化时不替换，避免列表、文件树、对比视图无意义地刷新
     if (JSON.stringify(status) !== JSON.stringify(git.status)) git.status = status;
     lastError = "";
   } catch (e) {
@@ -168,19 +171,19 @@ export async function refreshGit() {
     if (String(e) !== lastError) toast(e);
     lastError = String(e);
   } finally {
-    if (seq === refreshSeq) {
-      refreshing = false;
-      git.loaded = true;
-    }
+    if (seq === refreshSeq) git.loaded = true;
   }
-  refreshDiffs();
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
+/** 稍后刷新一次。连续触发时不会一直往后推（构建时文件一直在变），而是最多每 delay 毫秒刷新一次 */
 export function scheduleRefresh(delay = 300) {
-  clearTimeout(timer);
-  timer = setTimeout(refreshGit, delay);
+  if (timer) return;
+  timer = setTimeout(() => {
+    timer = undefined;
+    refreshGit();
+  }, delay);
 }
 
 watch(
@@ -189,25 +192,56 @@ watch(
     git.status = null;
     git.loaded = false;
     git.message = "";
+    git.amend = false;
     refreshGit();
   },
   { immediate: true },
 );
 
+// 应用内的保存、新建、删除等操作
 watch(() => workspace.fsVersion, () => scheduleRefresh());
-
+// 从别的程序切回来
 window.addEventListener("focus", () => scheduleRefresh(0));
-setInterval(() => {
-  if (document.hasFocus() && !refreshing && git.busy === 0) refreshGit();
-}, POLL_INTERVAL);
+
+// 监听文件夹（以及在文件夹之外的 .git 目录），外部改动时刷新文件树、已打开的文件和 Git 状态
+watch(
+  () => [workspace.root, git.status?.gitDir] as const,
+  ([root, gitDir]) => {
+    fsWatch(root, gitDir).catch((e) => toast(`无法监听文件变化：${e}`));
+  },
+  { immediate: true },
+);
+
+listen<FsChange>("fs-changed", ({ payload: c }) => {
+  if (c.all) {
+    // 改动太多（切换分支、构建等），整体刷新
+    refreshTree();
+    reloadCleanTabs();
+  } else {
+    for (const dir of c.dirs) refreshDir(dir, false);
+    if (c.files.length) reloadCleanTabs(c.files);
+  }
+  if (c.git) scheduleRefresh();
+});
 
 // ---------------- 操作 ----------------
 
 // git 操作排队执行，避免连续点击时抢 index.lock
 let queue: Promise<unknown> = Promise.resolve();
 
-/** 执行 git 操作，成功返回 true；失败时弹出错误。changesFiles 表示操作会改动工作区的文件 */
-function run(fn: (root: string) => Promise<unknown>, changesFiles = false): Promise<boolean> {
+function showError(e: unknown) {
+  if (String(e) === "已取消") toast("已取消", { kind: "info" });
+  else toast(e, { action: { label: "查看输出", run: showOutput } });
+}
+
+/**
+ * 执行 git 操作，成功返回 true；失败时弹出错误。
+ * changesFiles 表示操作会改动工作区的文件（切换分支、拉取等），完成后刷新文件树和已打开的文件
+ */
+export function runGit(
+  fn: (root: string) => Promise<unknown>,
+  options: { changesFiles?: boolean } = {},
+): Promise<boolean> {
   const root = git.status?.root;
   if (!root) return Promise.resolve(false);
   git.busy++;
@@ -216,10 +250,10 @@ function run(fn: (root: string) => Promise<unknown>, changesFiles = false): Prom
       await fn(root);
       return true;
     } catch (e) {
-      toast(e);
+      showError(e);
       return false;
     } finally {
-      if (changesFiles) {
+      if (options.changesFiles) {
         await reloadCleanTabs();
         refreshTree();
       }
@@ -236,10 +270,10 @@ const pathsOf = (changes: GitChange[]) =>
   changes.flatMap((c) => (c.origPath ? [c.path, c.origPath] : [c.path]));
 
 export const stage = (changes: GitChange[]) =>
-  changes.length ? run((root) => gitApi.gitStage(root, pathsOf(changes))) : Promise.resolve(false);
+  changes.length ? runGit((root) => gitApi.gitStage(root, pathsOf(changes))) : Promise.resolve(false);
 
 export const unstage = (changes: GitChange[]) =>
-  changes.length ? run((root) => gitApi.gitUnstage(root, pathsOf(changes))) : Promise.resolve(false);
+  changes.length ? runGit((root) => gitApi.gitUnstage(root, pathsOf(changes))) : Promise.resolve(false);
 
 export async function discard(changes: GitChange[]) {
   if (!changes.length) return;
@@ -260,14 +294,14 @@ export async function discard(changes: GitChange[]) {
     cancelLabel: "取消",
   });
   if (!ok) return;
-  const done = await run(
+  const done = await runGit(
     (root) =>
       gitApi.gitDiscard(
         root,
         tracked.map((c) => c.path),
         untracked.map((c) => c.path),
       ),
-    true,
+    { changesFiles: true },
   );
   if (done) for (const c of untracked) refreshDir(dirName(absPath(c.path)));
 }
@@ -288,23 +322,33 @@ async function saveBeforeCommit() {
   return choice === "直接提交";
 }
 
-export async function commit(amend = false) {
-  if (!git.status || git.busy) return;
+/** 提交之后顺便做的事 */
+export type AfterCommit = "none" | "push" | "sync";
+
+export async function commit(after: AfterCommit = "none") {
+  const status = git.status;
+  if (!status || git.busy) return;
+  // 合并、变基等进行中时，提交按钮就是“继续”
+  if (status.operation) {
+    await continueOperation();
+    return;
+  }
+  const amend = git.amend;
   const text = git.message.trim();
   if (!text && !amend) {
-    toast("请输入提交信息");
+    toast("请输入提交信息", { kind: "info" });
     return;
   }
   if (!(await saveBeforeCommit())) return;
   const { merge, staged, changes } = groups.value;
   if (merge.length) {
-    toast("请先解决合并冲突，并暂存解决后的文件");
+    toast("请先解决合并冲突，并暂存解决后的文件", { kind: "info" });
     return;
   }
   let toStage: GitChange[] = [];
   if (!staged.length && !amend) {
     if (!changes.length) {
-      toast("没有可提交的更改");
+      toast("没有可提交的更改", { kind: "info" });
       return;
     }
     const ok = await ask("没有暂存的更改。是否暂存所有更改并直接提交？", {
@@ -316,14 +360,141 @@ export async function commit(amend = false) {
     if (!ok) return;
     toStage = changes;
   }
-  const done = await run(async (root) => {
+  const done = await runGit(async (root) => {
     if (toStage.length) await gitApi.gitStage(root, pathsOf(toStage));
     await gitApi.gitCommit(root, text, amend);
   });
-  if (done) git.message = "";
+  if (!done) return;
+  git.message = "";
+  git.amend = false;
+  if (after === "push") await remote(git.status?.upstream ? "push" : "publish");
+  else if (after === "sync") await sync();
 }
 
-export const remote = (op: RemoteOp) => run((root) => gitApi.gitRemote(root, op), op === "pull");
+/** 进入“修改上次提交”模式，把上次的提交信息填进输入框 */
+export async function startAmend() {
+  const status = git.status;
+  if (!status?.head) {
+    toast("还没有任何提交", { kind: "info" });
+    return;
+  }
+  try {
+    git.message = await gitApi.gitLastMessage(status.root);
+    git.amend = true;
+  } catch (e) {
+    showError(e);
+  }
+}
+
+export function cancelAmend() {
+  git.amend = false;
+  git.message = "";
+}
+
+/** 撤销上一次提交：改动回到暂存区，提交信息放回输入框 */
+export async function undoLastCommit() {
+  const status = git.status;
+  if (!status?.head) {
+    toast("还没有任何提交", { kind: "info" });
+    return;
+  }
+  // 有上游且不领先，说明上一次提交已经在远程了
+  const pushed = !!status.upstream && status.ahead === 0;
+  const ok = await ask(
+    pushed
+      ? "上一次提交已经推送到远程。撤销后本地会落后于远程，重新提交后需要强制推送才能同步。\n确定要撤销吗？"
+      : "撤销上一次提交？提交里的改动会回到暂存区，不会丢失。",
+    { title: "撤销上次提交", kind: pushed ? "warning" : "info", okLabel: "撤销提交", cancelLabel: "取消" },
+  );
+  if (!ok) return;
+  let undone = "";
+  const done = await runGit(async (root) => {
+    undone = await gitApi.gitUndoCommit(root);
+  });
+  if (done && !git.message.trim()) git.message = undone;
+}
+
+/** 把文件或文件夹加入仓库根目录的 .gitignore */
+export async function addToGitignore(path: string, isDir: boolean) {
+  const rel = relPath(path);
+  if (!rel) {
+    toast("这个文件不在 Git 仓库中");
+    return;
+  }
+  await runGit((root) => gitApi.gitIgnore(root, [`/${rel}${isDir ? "/" : ""}`]));
+}
+
+// ---------------- 合并、变基等进行中的操作 ----------------
+
+export async function continueOperation() {
+  const op = git.status?.operation;
+  if (!op) return;
+  if (groups.value.merge.length) {
+    toast("还有未解决的冲突。解决后暂存这些文件，再继续。", { kind: "info" });
+    return;
+  }
+  if (!(await saveBeforeCommit())) return;
+  let again = false;
+  const done = await runGit(
+    async (root) => {
+      again = await gitApi.gitOpContinue(root, op, git.message.trim());
+    },
+    { changesFiles: true },
+  );
+  if (!done) return;
+  git.message = "";
+  if (again) toast(`${OPERATION_LABELS[op]}的下一步又遇到了冲突，请解决后继续`, { kind: "info" });
+}
+
+export async function abortOperation() {
+  const op = git.status?.operation;
+  if (!op) return;
+  const ok = await ask(`确定要中止${OPERATION_LABELS[op]}吗？\n工作区会恢复到开始之前的状态。`, {
+    title: `中止${OPERATION_LABELS[op]}`,
+    kind: "warning",
+    okLabel: "中止",
+    cancelLabel: "取消",
+  });
+  if (ok) await runGit((root) => gitApi.gitOpAbort(root, op), { changesFiles: true });
+}
+
+// ---------------- 远程 ----------------
+
+let opSeq = 0;
+
+const REMOTE_LABELS: Record<RemoteOp, string> = {
+  pull: "拉取",
+  push: "推送",
+  fetch: "抓取",
+  publish: "发布分支",
+  "push-tags": "推送标签",
+};
+
+function trackProgress(label: string) {
+  const id = ++opSeq;
+  git.progress = { id, label, phase: "", percent: null };
+  const onProgress = (p: Progress) => {
+    if (git.progress?.id !== id) return;
+    git.progress.phase = p.phase;
+    git.progress.percent = p.percent;
+  };
+  const done = () => {
+    if (git.progress?.id === id) git.progress = null;
+  };
+  return { id, onProgress, done };
+}
+
+async function remoteStep(root: string, op: RemoteOp) {
+  const p = trackProgress(REMOTE_LABELS[op]);
+  try {
+    await gitApi.gitRemote(root, op, p.id, p.onProgress);
+  } finally {
+    p.done();
+  }
+}
+
+export const remote = (op: RemoteOp) =>
+  runGit((root) => remoteStep(root, op), { changesFiles: op === "pull" });
 
 /** 同步：先拉取再推送；还没有上游分支时发布当前分支 */
 export async function sync() {
@@ -333,11 +504,24 @@ export async function sync() {
     await remote("publish");
     return;
   }
-  await run(async (root) => {
-    await gitApi.gitRemote(root, "pull");
-    await gitApi.gitRemote(root, "push");
-  }, true);
+  await runGit(
+    async (root) => {
+      await remoteStep(root, "pull");
+      await remoteStep(root, "push");
+    },
+    { changesFiles: true },
+  );
 }
+
+export function cancelRemote() {
+  if (git.progress) gitApi.gitCancel(git.progress.id);
+}
+
+// 远程操作需要账号密码时，后端通过 askpass 让这里弹出输入框
+listen<{ id: number; prompt: string; secret: boolean }>("git-askpass", async ({ payload }) => {
+  const value = await promptInput(payload.prompt.trim(), "", { secret: payload.secret });
+  gitApi.gitAskpassReply(payload.id, value);
+});
 
 export async function initRepo() {
   const dir = workspace.root;
@@ -345,159 +529,37 @@ export async function initRepo() {
   try {
     await gitApi.gitInit(dir);
   } catch (e) {
-    toast(e);
+    showError(e);
   }
   await refreshGit();
 }
 
-// ---------------- 分支 ----------------
-
-async function checkout(branch: string, create: boolean, start?: string) {
-  await run((root) => gitApi.gitCheckout(root, branch, create, start), true);
-}
-
-/** 以某个提交为起点新建分支并切换过去 */
-export async function createBranchAt(hash: string, short: string) {
-  const name = (await promptInput(`新分支名称（基于 ${short}）`))?.trim();
-  if (name) await checkout(name, true, hash);
-}
-
-export async function pickBranch() {
-  const status = git.status;
-  if (!status) return;
-  let branches: string[];
+/** 克隆仓库：输入地址、选择父文件夹，完成后询问是否打开 */
+export async function cloneRepo() {
+  const url = (
+    await promptInput("要克隆的仓库地址", "", { placeholder: "https://github.com/用户名/仓库.git" })
+  )?.trim();
+  if (!url) return;
+  const parent = await open({ directory: true, title: "选择克隆到哪个文件夹下" });
+  if (typeof parent !== "string") return;
+  watchOutputDir(parent);
+  const p = trackProgress("克隆");
+  git.busy++;
+  let target: string;
   try {
-    branches = await gitApi.gitBranches(status.root);
+    target = await gitApi.gitClone(url, parent, p.id, p.onProgress);
   } catch (e) {
-    toast(e);
+    showError(e);
     return;
+  } finally {
+    p.done();
+    git.busy--;
   }
-  openPicker("选择要切换到的分支", [
-    {
-      label: "＋ 新建分支…",
-      run: async () => {
-        const name = (await promptInput("新分支名称（基于当前提交）"))?.trim();
-        if (name) await checkout(name, true);
-      },
-    },
-    ...branches.map((b) => ({
-      label: b,
-      detail: b === status.branch ? "当前分支" : undefined,
-      run: () => {
-        if (b !== git.status?.branch) checkout(b, false);
-      },
-    })),
-  ]);
-}
-
-// ---------------- 对比 ----------------
-
-// 差异视图只在第一次对比时加载
-const loadMerge = () => import("@codemirror/merge");
-
-/** revertable 为 false 时不显示“还原”按钮（只读的历史版本） */
-async function mergeExtension(original: string, revertable = true) {
-  const { unifiedMergeView } = await loadMerge();
-  if (!revertable) return unifiedMergeView({ original, mergeControls: false });
-  return unifiedMergeView({
-    original,
-    // 只保留“还原”按钮；“接受”只会改内存里的原始版本，对用户没有意义
-    mergeControls: (type, action) => {
-      const button = document.createElement("button");
-      if (type === "accept") {
-        button.style.display = "none";
-        return button;
-      }
-      button.name = "reject";
-      button.textContent = "还原";
-      button.title = "把这处更改还原成对比版本的内容";
-      button.onmousedown = action;
-      return button;
-    },
+  const choice = await message(`已克隆到 ${target}`, {
+    title: "克隆完成",
+    kind: "info",
+    buttons: { yes: "打开", no: "在新窗口打开", cancel: "暂不打开" },
   });
-}
-
-async function applyOriginal(tab: Tab, original: string) {
-  const { getOriginalDoc } = await loadMerge();
-  original = original.replace(/\r\n?/g, "\n");
-  const state = getState(tab.id);
-  if (!state) return;
-  try {
-    // 内容没变就不重建，避免已展开的差异块和滚动位置被重置
-    if (tab.diff && getOriginalDoc(state).toString() === original) return;
-  } catch {
-    // 还没有进入对比模式
-  }
-  const extension = await mergeExtension(original, !tab.readonly);
-  // 标签页可能在加载期间被关闭
-  if (findTab(tab.id)) updateTabState(tab.id, { effects: diffCompartment.reconfigure(extension) });
-}
-
-export function closeDiff(id: number) {
-  const tab = findTab(id);
-  if (!tab?.diff) return;
-  tab.diff = null;
-  updateTabState(id, { effects: diffCompartment.reconfigure([]) });
-}
-
-async function loadDiff(tab: Tab, rev: string, rel: string) {
-  const root = git.status?.root;
-  if (!root) return;
-  let original: string | null;
-  try {
-    original = await gitApi.gitShow(root, rev, rel);
-  } catch (e) {
-    toast(e);
-    return;
-  }
-  // 标签页可能在等待期间被关闭
-  if (!findTab(tab.id)) return;
-  if (original == null) {
-    closeDiff(tab.id);
-    return;
-  }
-  await applyOriginal(tab, original);
-  tab.diff = { rev, rel, label: rev ? "HEAD" : "暂存区" };
-}
-
-/** 给标签页显示与指定内容的对比（历史提交里的文件与父提交对比时用） */
-export async function applyDiff(tab: Tab, original: string, diff: NonNullable<Tab["diff"]>) {
-  await applyOriginal(tab, original);
-  tab.diff = diff;
-}
-
-/** Git 状态变化后（比如暂存了文件）更新对比的原始版本 */
-function refreshDiffs() {
-  for (const tab of workspace.tabs) {
-    // 历史版本不会变，不用重新读取
-    if (tab.diff && !tab.readonly) loadDiff(tab, tab.diff.rev, tab.diff.rel);
-  }
-}
-
-/** 打开文件并显示更改：未暂存的更改与暂存区对比，已暂存的更改与 HEAD 对比 */
-export async function openChange(c: GitChange, group: Group) {
-  const path = absPath(c.path);
-  const deleted = group === "staged" ? c.index === "D" : c.worktree === "D";
-  if (deleted) {
-    toast(`“${baseName(c.path)}”已被删除`);
-    return;
-  }
-  await openFile(path);
-  const tab = findTabByPath(path);
-  if (!tab) return;
-  // 冲突文件直接看冲突标记；新文件没有可以对比的版本
-  if (group === "merge" || c.worktree === "?" || (group === "staged" && c.index === "A")) {
-    closeDiff(tab.id);
-    return;
-  }
-  // 已暂存的重命名要用原路径去 HEAD 里取旧版本
-  const staged = group === "staged";
-  await loadDiff(tab, staged ? "HEAD" : "", staged && c.origPath ? c.origPath : c.path);
-}
-
-export async function openChangeFile(c: GitChange) {
-  const path = absPath(c.path);
-  await openFile(path);
-  const tab = findTabByPath(path);
-  if (tab) closeDiff(tab.id);
+  if (choice === "打开") await openFolder(target);
+  else if (choice === "在新窗口打开") await openFolderInNewWindow(target);
 }

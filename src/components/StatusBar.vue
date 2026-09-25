@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { git, pickBranch, remote, sync } from "../store/git";
+import { pickBranch } from "../store/branches";
+import { OPERATION_LABELS, cancelRemote, git, remote, sync } from "../store/git";
 import { activeTab, workspace } from "../store/workspace";
 import Icon from "./Icon.vue";
 
@@ -10,13 +11,21 @@ const branchLabel = computed(() => {
   const s = git.status;
   if (!s) return "";
   const name = s.branch ?? s.head ?? "HEAD";
-  return s.changes.length ? `${name}*` : name;
+  const op = s.operation ? `（${OPERATION_LABELS[s.operation]}中）` : "";
+  return `${name}${s.changes.length ? "*" : ""}${op}`;
 });
 
 const syncLabel = computed(() => {
   const s = git.status;
   if (!s?.upstream) return "";
   return [s.behind && `${s.behind}↓`, s.ahead && `${s.ahead}↑`].filter(Boolean).join(" ");
+});
+
+const progressLabel = computed(() => {
+  const p = git.progress;
+  if (!p) return "";
+  const detail = p.percent != null ? ` ${p.percent}%` : "…";
+  return `${p.label}${detail}`;
 });
 </script>
 
@@ -31,7 +40,7 @@ const syncLabel = computed(() => {
         <Icon name="branch" />{{ branchLabel }}
       </button>
       <button
-        v-if="git.status.branch"
+        v-if="git.status.branch && !git.progress"
         class="item"
         :class="{ spinning: git.busy > 0 }"
         :title="git.status.upstream ? `与 ${git.status.upstream} 同步` : '发布分支'"
@@ -41,6 +50,10 @@ const syncLabel = computed(() => {
         <Icon name="sync" />{{ syncLabel }}
       </button>
     </template>
+    <span v-if="git.progress" class="item progress" :title="git.progress.phase">
+      <Icon name="sync" class="spin" />{{ progressLabel }}
+      <button class="cancel" title="取消" @click="cancelRemote()"><Icon name="close" /></button>
+    </span>
     <span v-if="workspace.root" class="item path" :title="workspace.root">{{ workspace.root }}</span>
     <span class="spacer"></span>
     <template v-if="tab">
@@ -73,6 +86,8 @@ const syncLabel = computed(() => {
   flex: 1;
 }
 .item {
+  display: inline-flex;
+  align-items: center;
   flex: none;
   gap: 4px;
   height: 100%;
@@ -81,7 +96,9 @@ const syncLabel = computed(() => {
   text-overflow: ellipsis;
 }
 .item.path {
+  display: inline;
   flex: 0 1 auto;
+  line-height: 22px;
 }
 button.item:hover:not(:disabled) {
   background: var(--hover);
@@ -91,7 +108,24 @@ button.item:hover:not(:disabled) {
   width: 14px;
   height: 14px;
 }
-.spinning .icon {
+.progress {
+  color: var(--fg);
+}
+.cancel {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+.cancel:hover {
+  background: var(--hover);
+  color: var(--fg-strong);
+}
+.cancel .icon {
+  width: 12px;
+  height: 12px;
+}
+.spinning .icon,
+.icon.spin {
   animation: spin 1s linear infinite;
 }
 @keyframes spin {

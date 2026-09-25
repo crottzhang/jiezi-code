@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { readDir, type DirEntry } from "../api/fs";
-import { decorationOf, describeStatus, git as gitState } from "../store/git";
+import { addToGitignore, decorationOf, describeStatus, git as gitState } from "../store/git";
 import { showFileHistory } from "../store/history";
 import { showMenu, toast, type MenuItem } from "../store/ui";
 import {
@@ -67,6 +67,10 @@ function onContextMenu(e: MouseEvent) {
     : [{ label: "打开", action: () => openFile(path) }];
   if (!isDir && gitState.status && git.value !== "untracked") {
     items.push({ label: "查看文件历史", action: () => showFileHistory(path) });
+  }
+  // 文件夹，以及还没被跟踪的文件，可以加入 .gitignore
+  if (gitState.status && (isDir || git.value === "untracked")) {
+    items.push({ label: "添加到 .gitignore", action: () => addToGitignore(path, isDir) });
   }
   items.push(
     { label: "重命名", action: () => renamePath(path) },

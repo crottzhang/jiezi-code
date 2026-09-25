@@ -11,6 +11,16 @@ const PATHS = {
   branch: "M5 2.5v8M5 10.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4M11 2.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4M11 6.5c0 3-6 2-6 4",
   sync: "M2.5 8a5.5 5.5 0 0 1 9.5-3.75M13.5 8A5.5 5.5 0 0 1 4 11.75M12 1.5v3H9M4 14.5v-3h3",
   close: "m4 4 8 8M12 4l-8 8",
+  trash: "M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9",
+  apply: "M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10",
+  pop: "M8 13.5v-8M4.5 9 8 5.5 11.5 9M3 2.5h10",
+  chevron: "m4.5 6.5 3.5 3.5 3.5-3.5",
+  up: "M8 12.5v-9M4 7.5l4-4 4 4",
+  down: "M8 3.5v9M4 8.5l4 4 4-4",
+  split: "M2.5 3.5h11v9h-11zM8 3.5v9",
+  inline: "M2.5 3.5h11v9h-11zM2.5 8h11",
+  output: "M3 4h10M3 8h10M3 12h6",
+  stash: "M2.5 6.5h11v6h-11zM4.5 6.5V4h7v2.5",
 } as const;
 
 defineProps<{ name: keyof typeof PATHS }>();

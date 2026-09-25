@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onBeforeUnmount, onMounted } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { newWindow, takeInitialOpen } from "./api/fs";
 import { clamp, layout, startDrag, toggleView } from "./store/layout";
 import { terminal, toggleTerminal } from "./store/terminal";
 import { openPalette, toast } from "./store/ui";
 import {
+  activeTab,
   closeTab,
   confirmDiscard,
   cycleTab,
@@ -17,6 +18,7 @@ import {
 } from "./store/workspace";
 import ActivityBar from "./components/ActivityBar.vue";
 import CodeEditor from "./components/CodeEditor.vue";
+import DiffBar from "./components/DiffBar.vue";
 import EditorTabs from "./components/EditorTabs.vue";
 import Overlays from "./components/Overlays.vue";
 import QuickOpen from "./components/QuickOpen.vue";
@@ -28,6 +30,12 @@ import Welcome from "./components/Welcome.vue";
 
 // xterm.js 只在第一次打开终端时才加载
 const TerminalPanel = defineAsyncComponent(() => import("./components/TerminalPanel.vue"));
+// 左右并排对比（@codemirror/merge 的 MergeView）只在用到时加载
+const DiffSplitView = defineAsyncComponent(() => import("./components/DiffSplitView.vue"));
+// 光标所在行的 Git 作者信息
+import("./store/blame");
+
+const splitDiff = computed(() => layout.diffSplit && !!activeTab()?.diff);
 
 function resizeSidebar(e: MouseEvent) {
   const start = layout.sidebarWidth;
@@ -113,7 +121,9 @@ onBeforeUnmount(() => {
       <div class="editor-area">
         <template v-if="workspace.active != null">
           <EditorTabs />
-          <CodeEditor />
+          <DiffBar />
+          <DiffSplitView v-if="splitDiff" />
+          <CodeEditor v-else />
         </template>
         <Welcome v-else />
       </div>

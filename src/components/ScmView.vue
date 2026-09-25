@@ -3,30 +3,46 @@ import { computed, nextTick, reactive, ref, watch } from "vue";
 import { baseName, dirName } from "../api/fs";
 import type { GitChange } from "../api/git";
 import {
+  createBranch,
+  pickBranch,
+  pickBranchToDelete,
+  pickBranchToMerge,
+  renameBranch,
+} from "../store/branches";
+import { openChange, openChangeFile } from "../store/diff";
+import {
+  OPERATION_LABELS,
+  abortOperation,
   absPath,
+  addToGitignore,
+  cancelAmend,
+  cloneRepo,
   commit,
+  continueOperation,
   describeStatus,
   discard,
   git,
   groups,
   initRepo,
   kindOf,
-  openChange,
-  openChangeFile,
-  pickBranch,
   refreshGit,
   remote,
   stage,
+  startAmend,
   statusLetter,
   sync,
+  undoLastCommit,
   unstage,
   type Group,
 } from "../store/git";
-import { showMenu, type MenuItem } from "../store/ui";
-import { openFolder, workspace } from "../store/workspace";
 import { showFileHistory } from "../store/history";
+import { showOutput } from "../store/output";
+import { popLatestStash, stashChanges } from "../store/stash";
+import { SEPARATOR, showMenu, type MenuItem } from "../store/ui";
+import { openFolder, workspace } from "../store/workspace";
 import HistoryView from "./HistoryView.vue";
 import Icon from "./Icon.vue";
+import StashView from "./StashView.vue";
 
 const TITLES: Record<Group, string> = {
   merge: "合并更改",
@@ -44,15 +60,22 @@ const sections = computed(() =>
 );
 
 const hasChanges = computed(() => sections.value.length > 0);
+const operation = computed(() => git.status?.operation ?? null);
 
 const placeholder = computed(() => {
+  if (operation.value === "merge") return "合并提交信息（不填则使用默认的合并信息）";
+  if (git.amend) return "修改上次的提交信息（Ctrl+Enter 修改上次提交）";
   const branch = git.status?.branch;
   return branch ? `提交信息（Ctrl+Enter 提交到“${branch}”）` : "提交信息（Ctrl+Enter 提交）";
 });
 
-/** 主按钮：有更改时提交；没有更改时发布分支或同步 */
+/** 主按钮：进行中的操作→继续；修改上次提交；有更改时提交；没有更改时发布分支或同步 */
 const primary = computed(() => {
   const s = git.status;
+  if (operation.value) {
+    return { label: `继续${OPERATION_LABELS[operation.value]}`, icon: "check" as const, run: continueOperation };
+  }
+  if (git.amend) return { label: "修改上次提交", icon: "check" as const, run: () => commit() };
   if (!s || hasChanges.value || !s.branch) return { label: "提交", icon: "check" as const, run: () => commit() };
   if (!s.upstream) return { label: "发布分支", icon: "sync" as const, run: () => remote("publish") };
   if (s.ahead || s.behind) {
@@ -60,6 +83,12 @@ const primary = computed(() => {
     return { label: `同步更改 ${counts}`, icon: "sync" as const, run: sync };
   }
   return { label: "提交", icon: "check" as const, run: () => commit() };
+});
+
+/** 顶部进度条：远程操作有百分比时显示实际进度 */
+const progressWidth = computed(() => {
+  const p = git.progress;
+  return p?.percent != null ? `${p.percent}%` : null;
 });
 
 // 提交信息输入框随内容增高
@@ -73,12 +102,36 @@ watch(
   () => git.message,
   () => nextTick(autosize),
 );
+// 进入“修改上次提交”模式时把光标放进输入框
+watch(
+  () => git.amend,
+  (on) => on && nextTick(() => input.value?.focus()),
+);
 
 function onCommitKey(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
     e.preventDefault();
-    commit();
+    primary.value.run();
+  } else if (e.key === "Escape" && git.amend) {
+    cancelAmend();
   }
+}
+
+function onCommitMenu(e: MouseEvent) {
+  const disabled = !!operation.value;
+  const items: MenuItem[] = disabled
+    ? [{ label: `中止${OPERATION_LABELS[operation.value!]}`, action: abortOperation, danger: true }]
+    : [
+        { label: "提交", action: () => commit() },
+        { label: "提交并推送", action: () => commit("push") },
+        { label: "提交并同步", action: () => commit("sync") },
+        SEPARATOR,
+        git.amend
+          ? { label: "取消修改上次提交", action: cancelAmend }
+          : { label: "修改上次提交…", action: startAmend },
+        { label: "撤销上次提交", action: undoLastCommit },
+      ];
+  showMenu(e, items);
 }
 
 function relDir(c: GitChange) {
@@ -101,7 +154,10 @@ function onItemMenu(e: MouseEvent, c: GitChange, group: Group) {
   if (group === "staged") items.push({ label: "取消暂存", action: () => unstage([c]) });
   else items.push({ label: group === "merge" ? "标记为已解决（暂存）" : "暂存更改", action: () => stage([c]) });
   if (group === "changes") items.push({ label: "放弃更改", action: () => discard([c]), danger: true });
-  if (c.worktree !== "?") {
+  items.push(SEPARATOR);
+  if (c.worktree === "?") {
+    items.push({ label: "添加到 .gitignore", action: () => addToGitignore(absPath(c.path), false) });
+  } else {
     items.push({ label: "查看文件历史", action: () => showFileHistory(absPath(c.path)) });
   }
   items.push(
@@ -114,23 +170,29 @@ function onItemMenu(e: MouseEvent, c: GitChange, group: Group) {
 function onMoreMenu(e: MouseEvent) {
   const s = git.status;
   if (!s) return;
+  const { changes, staged } = groups.value;
   const items: MenuItem[] = [
     { label: "拉取", action: () => remote("pull") },
     { label: "推送", action: () => remote(s.upstream ? "push" : "publish") },
     { label: "同步（拉取并推送）", action: sync },
     { label: "抓取", action: () => remote("fetch") },
+    { label: "推送所有标签", action: () => remote("push-tags") },
+    SEPARATOR,
     { label: "切换分支…", action: pickBranch },
-    { label: "修改上次提交", action: () => commit(true) },
+    { label: "新建分支…", action: () => createBranch() },
+    { label: "合并分支到当前分支…", action: pickBranchToMerge },
+    { label: "重命名当前分支…", action: renameBranch },
+    { label: "删除分支…", action: pickBranchToDelete },
+    SEPARATOR,
+    { label: "储藏改动…", action: () => stashChanges(false) },
+    { label: "储藏改动（包含未跟踪的文件）…", action: () => stashChanges(true) },
   ];
-  if (groups.value.changes.length) {
-    items.push({ label: "暂存所有更改", action: () => stage(groups.value.changes) });
-  }
-  if (groups.value.staged.length) {
-    items.push({ label: "取消暂存所有更改", action: () => unstage(groups.value.staged) });
-  }
-  if (groups.value.changes.length) {
-    items.push({ label: "放弃所有更改", action: () => discard(groups.value.changes), danger: true });
-  }
+  if (s.stashCount) items.push({ label: "弹出最新的储藏", action: popLatestStash });
+  items.push(SEPARATOR);
+  if (changes.length) items.push({ label: "暂存所有更改", action: () => stage(changes) });
+  if (staged.length) items.push({ label: "取消暂存所有更改", action: () => unstage(staged) });
+  if (changes.length) items.push({ label: "放弃所有更改", action: () => discard(changes), danger: true });
+  items.push({ label: "显示 Git 输出", action: showOutput });
   showMenu(e, items);
 }
 </script>
@@ -140,27 +202,48 @@ function onMoreMenu(e: MouseEvent) {
     <header>
       <span class="title">源代码管理</span>
       <template v-if="git.status">
-        <button title="提交 (Ctrl+Enter)" :disabled="git.busy > 0" @click="commit()">
+        <button title="提交 (Ctrl+Enter)" :disabled="git.busy > 0" @click="primary.run()">
           <Icon name="check" />
         </button>
         <button title="刷新" @click="refreshGit()"><Icon name="refresh" /></button>
         <button title="更多操作" @click="onMoreMenu"><Icon name="more" /></button>
       </template>
     </header>
-    <div class="progress" :class="{ active: git.busy > 0 }"></div>
+    <div class="progress" :class="{ active: git.busy > 0 && !progressWidth }">
+      <div v-if="progressWidth" class="bar" :style="{ width: progressWidth }"></div>
+    </div>
 
     <div v-if="!workspace.root" class="empty">
       <p>打开文件夹后即可使用源代码管理。</p>
       <button class="primary" @click="openFolder()">打开文件夹</button>
+      <button class="secondary" @click="cloneRepo()">克隆仓库…</button>
     </div>
     <div v-else-if="!git.loaded" class="empty"><p>正在读取 Git 状态…</p></div>
     <div v-else-if="!git.status" class="empty">
       <p>当前文件夹不是 Git 仓库。</p>
       <button class="primary" @click="initRepo()">初始化仓库</button>
+      <button class="secondary" @click="cloneRepo()">克隆仓库…</button>
     </div>
 
     <div v-else class="body">
+      <div v-if="operation" class="banner">
+        <p>
+          正在{{ OPERATION_LABELS[operation] }}。{{
+            groups.merge.length
+              ? `还有 ${groups.merge.length} 个文件有冲突，解决后暂存它们，再点“继续”。`
+              : "冲突都已解决，可以继续了。"
+          }}
+        </p>
+        <div class="banner-actions">
+          <button class="secondary" @click="abortOperation()">中止</button>
+        </div>
+      </div>
+
       <div class="composer">
+        <div v-if="git.amend" class="amend">
+          <span>正在修改上次提交</span>
+          <button title="取消 (Esc)" @click="cancelAmend()"><Icon name="close" /></button>
+        </div>
         <textarea
           ref="input"
           v-model="git.message"
@@ -169,10 +252,15 @@ function onMoreMenu(e: MouseEvent) {
           :placeholder="placeholder"
           @keydown="onCommitKey"
         ></textarea>
-        <button class="primary" :disabled="git.busy > 0" @click="primary.run()">
-          <Icon :name="primary.icon" />
-          <span>{{ primary.label }}</span>
-        </button>
+        <div class="split">
+          <button class="primary" :disabled="git.busy > 0" @click="primary.run()">
+            <Icon :name="primary.icon" />
+            <span>{{ primary.label }}</span>
+          </button>
+          <button class="primary drop" title="更多提交方式" :disabled="git.busy > 0" @click="onCommitMenu">
+            <Icon name="chevron" />
+          </button>
+        </div>
       </div>
 
       <div class="list">
@@ -235,6 +323,7 @@ function onMoreMenu(e: MouseEvent) {
           </template>
         </section>
 
+        <StashView />
         <HistoryView />
       </div>
     </div>
@@ -269,14 +358,16 @@ header {
   white-space: nowrap;
 }
 header button,
-.actions button {
+.actions button,
+.amend button {
   width: 22px;
   height: 22px;
   border-radius: 4px;
   color: var(--fg-muted);
 }
 header button:hover,
-.actions button:hover {
+.actions button:hover,
+.amend button:hover {
   background: var(--hover);
   color: var(--fg-strong);
 }
@@ -285,12 +376,17 @@ button:disabled {
   cursor: default;
 }
 
-/* 执行 git 命令时顶部的进度条 */
+/* 执行 git 命令时顶部的进度条：有百分比时显示实际进度，否则来回滚动 */
 .progress {
   height: 2px;
   flex: none;
   overflow: hidden;
   position: relative;
+}
+.progress .bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
 }
 .progress.active::after {
   content: "";
@@ -311,20 +407,38 @@ button:disabled {
 }
 
 .empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 20px;
   color: var(--fg-muted);
 }
-.primary {
+.empty p {
+  margin: 0 0 4px;
+}
+.primary,
+.secondary {
   display: flex;
   gap: 6px;
   width: 100%;
   height: 28px;
   border-radius: var(--radius);
+}
+.primary {
   background: var(--accent);
   color: var(--accent-fg);
 }
+.secondary {
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--fg);
+}
 .primary:not(:disabled):hover {
   filter: brightness(1.15);
+}
+.secondary:hover {
+  background: var(--hover);
+  color: var(--fg-strong);
 }
 
 .body {
@@ -333,12 +447,40 @@ button:disabled {
   flex: 1;
   min-height: 0;
 }
+
+.banner {
+  margin: 2px 12px 8px 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--git-conflict);
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+.banner p {
+  margin: 0 0 8px;
+}
+.banner-actions {
+  display: flex;
+  gap: 6px;
+}
+.banner-actions .secondary {
+  width: auto;
+  height: 24px;
+  padding: 0 12px;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 2px 12px 8px 16px;
   flex: none;
+}
+.amend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--git-modified);
 }
 textarea {
   width: 100%;
@@ -359,6 +501,21 @@ textarea:focus {
 }
 textarea::placeholder {
   color: var(--fg-muted);
+}
+.split {
+  display: flex;
+  gap: 1px;
+}
+.split .primary:first-child {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split .drop {
+  width: 28px;
+  flex: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .list {

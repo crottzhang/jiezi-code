@@ -48,7 +48,8 @@ const editorListener = EditorView.updateListener.of((u) => {
   if (u.docChanged) {
     const tab = findTab(id);
     const saved = savedDocs.get(id);
-    if (tab && saved) tab.dirty = !u.state.doc.eq(saved);
+    // 只读标签页（历史版本、输出日志）的内容由程序更新，不算未保存
+    if (tab && saved && !tab.readonly) tab.dirty = !u.state.doc.eq(saved);
   }
   if (u.docChanged || u.selectionSet) updateCursor(u.state);
 });
@@ -67,7 +68,13 @@ export function updateTabState(id: number, spec: TransactionSpec) {
     return;
   }
   const state = states.get(id);
-  if (state) states.set(id, state.update(spec).state);
+  if (!state) return;
+  const next = state.update(spec).state;
+  states.set(id, next);
+  // 不在 EditorView 里的状态不会经过 editorListener，这里自己更新未保存标记
+  const tab = findTab(id);
+  const saved = savedDocs.get(id);
+  if (tab && saved && !tab.readonly && next.doc !== state.doc) tab.dirty = !next.doc.eq(saved);
 }
 
 export function updateCursor(state: EditorState) {
@@ -229,10 +236,12 @@ export async function saveFile(id = workspace.active) {
 }
 
 /** 文件在外部被改动（比如 Git 放弃更改、切换分支）后，重新读取没有未保存修改的标签页 */
-export async function reloadCleanTabs() {
+/** paths 给出时只重新读取这些文件（小写比较），否则检查所有标签页 */
+export async function reloadCleanTabs(paths?: string[]) {
+  const wanted = paths && new Set(paths.map((p) => p.toLowerCase()));
   await Promise.all(
     workspace.tabs
-      .filter((t) => !t.dirty && !t.readonly)
+      .filter((t) => !t.dirty && !t.readonly && (!wanted || wanted.has(t.path.toLowerCase())))
       .map(async (tab) => {
         let content: string;
         try {
@@ -302,9 +311,9 @@ export function cycleTab(delta: number) {
 
 // ---------------- 文件操作 ----------------
 
-export function refreshDir(dir: string) {
+export function refreshDir(dir: string, notify = true) {
   workspace.dirVersions[dir] = (workspace.dirVersions[dir] ?? 0) + 1;
-  workspace.fsVersion++;
+  if (notify) workspace.fsVersion++;
 }
 
 export function refreshTree() {

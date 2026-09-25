@@ -4,6 +4,9 @@ import { keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { LanguageDescription, type LanguageSupport } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
+import { blame } from "./blame";
+import { conflicts } from "./conflicts";
+import { quickDiff } from "./quickDiff";
 import { themeExtension } from "./theme";
 
 /** 每个 EditorState 记住自己属于哪个标签页（用 id 而不是路径，重命名文件时不用重建状态） */
@@ -43,6 +46,9 @@ export function createEditorState(
       keymap.of([indentWithTab]),
       themeExtension,
       language ?? [],
+      quickDiff,
+      conflicts,
+      blame,
       diffCompartment.of([]),
       extra,
       listener,

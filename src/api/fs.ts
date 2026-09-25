@@ -39,3 +39,17 @@ export function joinPath(dir: string, rel: string) {
 export function isUnder(path: string, parent: string) {
   return path === parent || path.startsWith(parent + "\\") || path.startsWith(parent + "/");
 }
+
+/** 外部改动通知（由 fsWatch 开始监听） */
+export interface FsChange {
+  dirs: string[];
+  files: string[];
+  /** Git 状态可能变了 */
+  git: boolean;
+  /** 改动太多，应整体刷新 */
+  all: boolean;
+}
+
+/** 监听文件夹的外部改动；gitDir 在文件夹之外时一并监听。root 为 null 时停止 */
+export const fsWatch = (root: string | null, gitDir?: string | null) =>
+  invoke<void>("fs_watch", { root, gitDir: gitDir ?? null });

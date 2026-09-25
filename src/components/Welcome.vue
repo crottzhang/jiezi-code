@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { baseName } from "../api/fs";
+import { cloneRepo } from "../store/git";
 import { openFolder, openFolderInNewWindow, recentFolders, workspace } from "../store/workspace";
 
 const recent = ref(recentFolders());
@@ -16,6 +17,7 @@ const shortcuts = [
   ["切换标签页", "Ctrl + Tab"],
   ["查找 / 替换", "Ctrl + F"],
   ["显示/隐藏侧边栏", "Ctrl + B"],
+  ["源代码管理", "Ctrl + Shift + G"],
   ["显示/隐藏终端", "Ctrl + `"],
 ];
 </script>
@@ -30,6 +32,7 @@ const shortcuts = [
         <div class="actions">
           <button class="primary" @click="openFolder()">打开文件夹</button>
           <button @click="openFolderInNewWindow()">在新窗口打开</button>
+          <button @click="cloneRepo()">克隆 Git 仓库…</button>
         </div>
 
         <section v-if="recent.length">

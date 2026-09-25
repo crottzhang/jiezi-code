@@ -70,6 +70,11 @@ const vscode: ThemeDef = {
     "diff-inserted-text": "rgba(156, 204, 44, 0.25)",
     "diff-removed-line": "rgba(255, 0, 0, 0.12)",
     "diff-removed-text": "rgba(255, 0, 0, 0.25)",
+    "git-modified-bar": "#1b81a8",
+    "conflict-current": "rgba(64, 200, 174, 0.2)",
+    "conflict-incoming": "rgba(64, 166, 255, 0.2)",
+    "conflict-marker": "rgba(255, 255, 255, 0.06)",
+    "blame-fg": "rgba(204, 204, 204, 0.4)",
 
     "syn-keyword": "#569cd6",
     "syn-control": "#c586c0",
@@ -174,6 +179,11 @@ const linear: ThemeDef = {
     "diff-inserted-text": "rgba(127, 211, 161, 0.2)",
     "diff-removed-line": "rgba(244, 122, 133, 0.08)",
     "diff-removed-text": "rgba(244, 122, 133, 0.2)",
+    "git-modified-bar": "#7aa2f7",
+    "conflict-current": "rgba(127, 211, 161, 0.14)",
+    "conflict-incoming": "rgba(122, 162, 247, 0.16)",
+    "conflict-marker": "rgba(255, 255, 255, 0.05)",
+    "blame-fg": "rgba(138, 143, 152, 0.7)",
 
     "syn-keyword": "#b4a7ff",
     "syn-control": "#d7a6ff",

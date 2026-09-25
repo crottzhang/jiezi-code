@@ -19,6 +19,10 @@ export const layout = reactive({
   sidebarView: (saved.sidebarView as SidebarView) === "scm" ? "scm" : ("explorer" as SidebarView),
   sidebarWidth: (saved.sidebarWidth as number) || 260,
   panelWidth: (saved.panelWidth as number) || 480,
+  /** 光标所在行末尾显示 Git 作者信息 */
+  blame: (saved.blame as boolean) ?? true,
+  /** 对比时左右并排显示，否则在一个编辑器里行内显示 */
+  diffSplit: (saved.diffSplit as boolean) ?? false,
 });
 
 watch(layout, () => {

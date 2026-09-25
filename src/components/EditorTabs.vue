@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
-import { closeDiff, git } from "../store/git";
+import { closeDiff } from "../store/diff";
+import { git } from "../store/git";
 import { showFileHistory } from "../store/history";
 import { showMenu, type MenuItem } from "../store/ui";
 import { closeTab, workspace, type Tab } from "../store/workspace";

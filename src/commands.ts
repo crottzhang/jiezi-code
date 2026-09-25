@@ -6,7 +6,27 @@ import { openSearchPanel } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
 import { newWindow } from "./api/fs";
 import { getEditorView } from "./editor/view";
-import { commit, git, pickBranch, refreshGit, remote, sync } from "./store/git";
+import {
+  createBranch,
+  pickBranch,
+  pickBranchToDelete,
+  pickBranchToMerge,
+  renameBranch,
+} from "./store/branches";
+import {
+  abortOperation,
+  cloneRepo,
+  commit,
+  continueOperation,
+  git,
+  refreshGit,
+  remote,
+  startAmend,
+  sync,
+  undoLastCommit,
+} from "./store/git";
+import { showOutput } from "./store/output";
+import { popLatestStash, stashChanges } from "./store/stash";
 import { showFileHistory } from "./store/history";
 import { layout, toggleView } from "./store/layout";
 import { newTerminal, terminal, toggleTerminal } from "./store/terminal";
@@ -47,6 +67,7 @@ function editorCommand(fn: (view: EditorView) => boolean) {
 const hasFolder = () => workspace.root != null;
 const hasEditor = () => workspace.active != null;
 const hasRepo = () => git.status != null;
+const inOperation = () => !!git.status?.operation;
 
 async function showAbout() {
   const version = await getVersion();
@@ -114,8 +135,13 @@ export const commands: Command[] = [
   { id: "terminal.new", label: "新建终端", run: newTerminal },
 
   { id: "git.commit", label: "Git：提交", run: () => commit(), enabled: hasRepo },
-  { id: "git.amend", label: "Git：修改上次提交", run: () => commit(true), enabled: hasRepo },
-  { id: "git.checkout", label: "Git：切换分支…", run: pickBranch, enabled: hasRepo },
+  { id: "git.commitPush", label: "Git：提交并推送", run: () => commit("push"), enabled: hasRepo },
+  { id: "git.commitSync", label: "Git：提交并同步", run: () => commit("sync"), enabled: hasRepo },
+  { id: "git.amend", label: "Git：修改上次提交…", run: startAmend, enabled: hasRepo },
+  { id: "git.undoCommit", label: "Git：撤销上次提交", run: undoLastCommit, enabled: hasRepo },
+  { id: "git.continue", label: "Git：继续合并/变基", run: continueOperation, enabled: inOperation },
+  { id: "git.abort", label: "Git：中止合并/变基", run: abortOperation, enabled: inOperation },
+
   { id: "git.pull", label: "Git：拉取", run: () => remote("pull"), enabled: hasRepo },
   {
     id: "git.push",
@@ -125,13 +151,44 @@ export const commands: Command[] = [
   },
   { id: "git.sync", label: "Git：同步（拉取并推送）", run: sync, enabled: hasRepo },
   { id: "git.fetch", label: "Git：抓取", run: () => remote("fetch"), enabled: hasRepo },
-  { id: "git.refresh", label: "Git：刷新", run: refreshGit, enabled: hasRepo },
+  { id: "git.pushTags", label: "Git：推送所有标签", run: () => remote("push-tags"), enabled: hasRepo },
+  { id: "git.clone", label: "Git：克隆仓库…", run: cloneRepo },
+
+  { id: "git.checkout", label: "Git：切换分支…", run: pickBranch, enabled: hasRepo },
+  { id: "git.branch", label: "Git：新建分支…", run: () => createBranch(), enabled: hasRepo },
+  { id: "git.merge", label: "Git：合并分支到当前分支…", run: pickBranchToMerge, enabled: hasRepo },
+  { id: "git.renameBranch", label: "Git：重命名当前分支…", run: renameBranch, enabled: hasRepo },
+  { id: "git.deleteBranch", label: "Git：删除分支…", run: pickBranchToDelete, enabled: hasRepo },
+
+  { id: "git.stash", label: "Git：储藏改动…", run: () => stashChanges(false), enabled: hasRepo },
+  {
+    id: "git.stashUntracked",
+    label: "Git：储藏改动（包含未跟踪的文件）…",
+    run: () => stashChanges(true),
+    enabled: hasRepo,
+  },
+  { id: "git.stashPop", label: "Git：弹出最新的储藏", run: popLatestStash, enabled: () => !!git.status?.stashCount },
+
   {
     id: "git.fileHistory",
     label: "Git：查看当前文件的历史",
     run: () => showFileHistory(activeTab()!.path),
     enabled: () => hasRepo() && hasEditor(),
   },
+  {
+    id: "git.blame",
+    label: "Git：在行末显示作者信息",
+    run: () => (layout.blame = !layout.blame),
+    checked: () => layout.blame,
+  },
+  {
+    id: "git.diffSplit",
+    label: "Git：对比时左右并排显示",
+    run: () => (layout.diffSplit = !layout.diffSplit),
+    checked: () => layout.diffSplit,
+  },
+  { id: "git.output", label: "Git：显示输出", run: showOutput },
+  { id: "git.refresh", label: "Git：刷新", run: refreshGit, enabled: hasRepo },
 
   ...themes.map((t) => ({
     id: `theme.${t.id}`,
