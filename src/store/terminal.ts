@@ -10,20 +10,45 @@ export const terminal = reactive({
   visible: false,
   sessions: [] as TermInfo[],
   active: null as number | null,
+  /** 临时图片管理界面是否打开 */
+  imagesOpen: false,
+  /** 每保存一张截图加一，管理界面据此刷新 */
+  imagesVersion: 0,
 });
 
-// xterm 实例不放进响应式状态，只登记一个聚焦函数
-const focusers = new Map<number, () => void>();
+export interface TermHandle {
+  focus: () => void;
+  /** 像用户粘贴一样写入文本（支持 bracketed paste） */
+  paste: (text: string) => void;
+}
+
+// xterm 实例不放进响应式状态，只登记聚焦和粘贴函数
+const handles = new Map<number, TermHandle>();
 let seq = 0;
 
-export function registerFocus(key: number, focus: (() => void) | null) {
-  if (focus) focusers.set(key, focus);
-  else focusers.delete(key);
+export function registerTerminal(key: number, handle: TermHandle | null) {
+  if (handle) handles.set(key, handle);
+  else handles.delete(key);
 }
 
 export async function focusTerminal(key = terminal.active) {
   await nextTick();
-  if (key != null) focusers.get(key)?.();
+  if (key != null) handles.get(key)?.focus();
+}
+
+/** 路径含空格时加引号，保证 shell 当成一个参数 */
+export function quotePath(path: string) {
+  return /\s/.test(path) ? `"${path}"` : path;
+}
+
+/** 把文件路径粘贴到当前终端，没有终端时新建一个 */
+export async function pastePathToTerminal(path: string) {
+  showTerminal();
+  await nextTick();
+  const key = terminal.active;
+  if (key == null) return;
+  handles.get(key)?.paste(quotePath(path));
+  focusTerminal(key);
 }
 
 function focusEditor() {

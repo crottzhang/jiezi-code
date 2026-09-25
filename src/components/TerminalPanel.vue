@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { closeTerminal, hideTerminal, newTerminal, terminal } from "../store/terminal";
+import { closeTerminal, newTerminal, terminal } from "../store/terminal";
+import TempImages from "./TempImages.vue";
 import TerminalView from "./TerminalView.vue";
 </script>
 
 <template>
   <aside class="panel">
     <header>
-      <span class="title">终端</span>
       <div class="tabs">
         <div
           v-for="s in terminal.sessions"
@@ -21,7 +21,19 @@ import TerminalView from "./TerminalView.vue";
         </div>
       </div>
       <button class="action" title="新建终端" @click="newTerminal()">＋</button>
-      <button class="action" title="隐藏面板 (Ctrl+`)" @click="hideTerminal()">⟩</button>
+      <span class="spacer"></span>
+      <button
+        class="action"
+        :class="{ on: terminal.imagesOpen }"
+        title="临时图片"
+        @click="terminal.imagesOpen = !terminal.imagesOpen"
+      >
+        <svg viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="1.5" />
+          <circle cx="6" cy="6.5" r="1.2" />
+          <path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3" />
+        </svg>
+      </button>
     </header>
     <div class="body">
       <TerminalView
@@ -32,6 +44,9 @@ import TerminalView from "./TerminalView.vue";
         :active="terminal.visible && s.key === terminal.active"
       />
     </div>
+    <Teleport to="body">
+      <TempImages v-if="terminal.imagesOpen" />
+    </Teleport>
   </aside>
 </template>
 
@@ -51,20 +66,13 @@ header {
   align-items: center;
   gap: 4px;
   height: 35px;
-  padding: 0 6px 0 12px;
+  padding: 0 6px 0 8px;
   flex: none;
   background: var(--bg-panel);
 }
-.title {
-  flex: none;
-  margin-right: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
 .tabs {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   gap: 2px;
   min-width: 0;
   overflow-x: auto;
@@ -110,9 +118,21 @@ header {
   visibility: visible;
 }
 .tab button:hover,
-.action:hover {
+.action:hover,
+.action.on {
   background: var(--hover);
   color: var(--fg-strong);
+}
+.action svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.spacer {
+  flex: 1;
 }
 .body {
   flex: 1;

@@ -116,7 +116,7 @@ onBeforeUnmount(() => {
         <div v-show="terminal.visible" class="sash" @mousedown="resizePanel"></div>
         <TerminalPanel
           v-show="terminal.visible"
-          class="side"
+          class="side terminal-panel"
           :style="{ width: `${layout.panelWidth}px` }"
         />
       </template>
@@ -141,6 +141,11 @@ onBeforeUnmount(() => {
 .side {
   flex: none;
   max-width: calc(100vw - 300px);
+}
+/* 窗口变窄时终端面板跟着收缩，不然右侧（包括标题栏按钮）会被挤出窗口 */
+.side.terminal-panel {
+  flex: 0 1 auto;
+  min-width: 240px;
 }
 .sash {
   width: 4px;

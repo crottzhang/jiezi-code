@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -9,9 +9,20 @@ import {
   spawnTerminal,
   writeTerminal,
 } from "../api/terminal";
-import { closeTerminal, focusTerminal, markExited, registerFocus, type TermInfo } from "../store/terminal";
+import { saveClipboardImage } from "../api/clipboard";
+import {
+  closeTerminal,
+  focusTerminal,
+  markExited,
+  quotePath,
+  registerTerminal,
+  terminal,
+  type TermInfo,
+} from "../store/terminal";
 import { workspace } from "../store/workspace";
 import { currentTheme, theme } from "../theme";
+import type { MenuNode } from "../menu";
+import MenuList from "./MenuList.vue";
 
 const props = defineProps<{ info: TermInfo; active: boolean }>();
 
@@ -44,12 +55,48 @@ function copySelection() {
   term.clearSelection();
 }
 
+/** 截图先存成文件，再把路径粘贴进终端 */
+async function pasteImage(image: Blob) {
+  try {
+    const path = await saveClipboardImage(image);
+    term.paste(quotePath(path));
+    terminal.imagesVersion++;
+  } catch (e) {
+    term.write(`\r\n\x1b[31m保存截图失败：${e}\x1b[0m\r\n`);
+  }
+}
+
+/** 剪贴板里只有图片（没有文本）时返回图片 */
+async function readClipboardImage() {
+  for (const item of await navigator.clipboard.read()) {
+    if (item.types.includes("text/plain")) return null;
+    const type = item.types.find((t) => t.startsWith("image/"));
+    if (type) return item.getType(type);
+  }
+  return null;
+}
+
 async function paste() {
+  const image = await readClipboardImage().catch(() => null);
+  if (image) return pasteImage(image);
   try {
     term.paste(await navigator.clipboard.readText());
   } catch {
     // 剪贴板不可读时忽略
   }
+}
+
+/** Ctrl+V 触发的 paste 事件：有图片时抢在 xterm 之前处理，纯文本仍交给 xterm */
+function onPaste(e: ClipboardEvent) {
+  const data = e.clipboardData;
+  if (!data || data.getData("text/plain")) return;
+  const image = [...data.items]
+    .find((i) => i.kind === "file" && i.type.startsWith("image/"))
+    ?.getAsFile();
+  if (!image) return;
+  e.preventDefault();
+  e.stopPropagation();
+  pasteImage(image);
 }
 
 /** 和 Windows Terminal / VS Code 一致：有选中内容时 Ctrl+C 复制，否则发送中断 */
@@ -65,11 +112,53 @@ function handleKey(e: KeyboardEvent) {
   return true;
 }
 
-/** 右键：有选中内容就复制，否则粘贴 */
-function onContextMenu(e: MouseEvent) {
+/** 右键菜单里一键启动的 AI 命令行，均跳过权限确认 */
+const AGENT_COMMANDS = [
+  { label: "Claude 绕过权限", command: "claude --dangerously-skip-permissions" },
+  { label: "Codex 绕过权限", command: "codex --dangerously-bypass-approvals-and-sandbox" },
+  { label: "Agy 绕过权限", command: "agy --dangerously-skip-permissions" },
+];
+
+const menu = shallowRef<{ x: number; y: number; items: MenuNode[] } | null>(null);
+const menuBox = ref<HTMLElement>();
+
+/** 像用户输入一样发送，走 onData 同一条路径 */
+function runCommand(command: string) {
+  term.input(`${command}\r`);
+}
+
+function buildMenu(): MenuNode[] {
+  const exited = props.info.exited;
+  return [
+    ...AGENT_COMMANDS.map(({ label, command }) => ({
+      label,
+      disabled: exited,
+      run: () => runCommand(command),
+    })),
+    { separator: true },
+    { label: "全选", run: () => term.selectAll() },
+    { label: "复制", keys: "Ctrl+C", disabled: !term.hasSelection(), run: copySelection },
+    { label: "粘贴", keys: "Ctrl+V", disabled: exited, run: paste },
+  ];
+}
+
+async function onContextMenu(e: MouseEvent) {
   e.preventDefault();
-  if (term.hasSelection()) copySelection();
-  else paste();
+  menu.value = { x: e.clientX, y: e.clientY, items: buildMenu() };
+  // 终端在窗口底部，放不下时向上/向左翻转
+  await nextTick();
+  const box = menuBox.value;
+  if (!box || !menu.value) return;
+  const { width, height } = box.getBoundingClientRect();
+  let { x, y } = menu.value;
+  if (x + width > innerWidth) x = Math.max(0, x - width);
+  if (y + height > innerHeight) y = Math.max(0, y - height);
+  menu.value = { ...menu.value, x, y };
+}
+
+function closeMenu() {
+  menu.value = null;
+  term.focus();
 }
 
 onMounted(async () => {
@@ -99,7 +188,7 @@ onMounted(async () => {
 
   resizeObserver = new ResizeObserver(() => safeFit());
   resizeObserver.observe(host.value!);
-  registerFocus(props.info.key, () => term.focus());
+  registerTerminal(props.info.key, { focus: () => term.focus(), paste: (text) => term.paste(text) });
   if (props.active) focusTerminal(props.info.key);
 
   try {
@@ -137,7 +226,7 @@ watch(
 
 onBeforeUnmount(() => {
   disposed = true;
-  registerFocus(props.info.key, null);
+  registerTerminal(props.info.key, null);
   resizeObserver?.disconnect();
   if (id != null) killTerminalProcess(id).catch(() => {});
   term?.dispose();
@@ -145,7 +234,21 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="host" class="terminal-host" @contextmenu="onContextMenu"></div>
+  <!-- 单根节点：父组件用 v-show 切换终端，菜单放在内部再传送到 body -->
+  <div ref="host" class="terminal-host" @contextmenu="onContextMenu" @paste.capture="onPaste">
+    <Teleport to="body">
+      <div v-if="menu" class="menu-mask" @mousedown="closeMenu" @contextmenu.prevent="closeMenu">
+        <div
+          ref="menuBox"
+          class="term-menu"
+          :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+          @mousedown.stop
+        >
+          <MenuList :items="menu.items" @close="closeMenu" />
+        </div>
+      </div>
+    </Teleport>
+  </div>
 </template>
 
 <style scoped>
@@ -153,5 +256,13 @@ onBeforeUnmount(() => {
   height: 100%;
   padding: 4px 0 0 10px;
   background: var(--bg-panel);
+}
+.menu-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+.term-menu {
+  position: absolute;
 }
 </style>

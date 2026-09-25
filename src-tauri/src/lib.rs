@@ -1,3 +1,4 @@
+mod clipboard;
 mod fs;
 mod terminal;
 mod window;
@@ -26,6 +27,11 @@ pub fn run() {
             window::new_window,
             window::take_initial_open,
             terminal::term_spawn,
+            clipboard::save_clipboard_image,
+            clipboard::list_clipboard_images,
+            clipboard::read_clipboard_image,
+            clipboard::delete_clipboard_images,
+            clipboard::reveal_clipboard_image,
             terminal::term_write,
             terminal::term_resize,
             terminal::term_kill,
