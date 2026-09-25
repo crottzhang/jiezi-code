@@ -12,8 +12,11 @@ function load() {
 
 const saved = load();
 
+export type SidebarView = "explorer" | "scm";
+
 export const layout = reactive({
   sidebarVisible: (saved.sidebarVisible as boolean) ?? true,
+  sidebarView: (saved.sidebarView as SidebarView) === "scm" ? "scm" : ("explorer" as SidebarView),
   sidebarWidth: (saved.sidebarWidth as number) || 260,
   panelWidth: (saved.panelWidth as number) || 480,
 });
@@ -25,6 +28,16 @@ watch(layout, () => {
     // 存储不可用时不影响使用
   }
 });
+
+/** 切换侧边栏视图；已经显示着这个视图时收起侧边栏 */
+export function toggleView(view: SidebarView) {
+  if (layout.sidebarVisible && layout.sidebarView === view) {
+    layout.sidebarVisible = false;
+  } else {
+    layout.sidebarView = view;
+    layout.sidebarVisible = true;
+  }
+}
 
 /** 拖动分隔条：onMove 收到相对按下位置的水平位移 */
 export function startDrag(e: MouseEvent, onMove: (dx: number) => void) {

@@ -34,7 +34,13 @@ const text = computed({
 });
 
 const mode = computed(() =>
-  text.value.startsWith(">") ? "command" : text.value.startsWith(":") ? "line" : "file",
+  ui.palette?.pick
+    ? "pick"
+    : text.value.startsWith(">")
+      ? "command"
+      : text.value.startsWith(":")
+        ? "line"
+        : "file",
 );
 
 const placeholder = computed(
@@ -43,6 +49,7 @@ const placeholder = computed(
       file: "按名称搜索文件（输入 > 搜索命令，: 跳转到行）",
       command: "输入命令名称",
       line: "输入行号",
+      pick: ui.palette?.pick?.placeholder ?? "",
     })[mode.value],
 );
 
@@ -122,8 +129,19 @@ function fileItems(query: string): Item[] {
   });
 }
 
+function pickItems(query: string): Item[] {
+  const all = ui.palette?.pick?.items ?? [];
+  if (!query) return all.map((item, i) => ({ key: String(i), ...item }));
+  return all
+    .map((item, i) => ({ item, i, m: fuzzyMatch(query, item.label) }))
+    .filter((x) => x.m)
+    .sort((a, b) => b.m!.score - a.m!.score)
+    .map(({ item, i, m }) => ({ key: String(i), ...item, hits: m!.positions }));
+}
+
 const items = computed<Item[]>(() => {
   const t = text.value;
+  if (mode.value === "pick") return pickItems(t.trim());
   if (mode.value === "command") return commandItems(t.slice(1).trim());
   if (mode.value === "line") return lineItems(t.slice(1).trim());
   return fileItems(t.trim());
@@ -139,7 +157,7 @@ watch(
     await nextTick();
     input.value?.focus();
     // 每次打开都重新扫描，保证新建/删除的文件能搜到；扫描期间先用上次的结果
-    loadFiles();
+    if (!ui.palette?.pick) loadFiles();
   },
 );
 

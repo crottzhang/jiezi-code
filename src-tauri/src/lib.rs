@@ -1,5 +1,6 @@
 mod clipboard;
 mod fs;
+mod git;
 mod terminal;
 mod window;
 
@@ -24,6 +25,18 @@ pub fn run() {
             fs::rename_entry,
             fs::delete_entry,
             fs::list_files,
+            git::git_status,
+            git::git_init,
+            git::git_stage,
+            git::git_unstage,
+            git::git_discard,
+            git::git_commit,
+            git::git_show,
+            git::git_branches,
+            git::git_checkout,
+            git::git_log,
+            git::git_commit_files,
+            git::git_remote,
             window::new_window,
             window::take_initial_open,
             terminal::term_spawn,

@@ -1,13 +1,47 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { git, pickBranch, remote, sync } from "../store/git";
 import { activeTab, workspace } from "../store/workspace";
+import Icon from "./Icon.vue";
 
 const tab = computed(activeTab);
+
+const branchLabel = computed(() => {
+  const s = git.status;
+  if (!s) return "";
+  const name = s.branch ?? s.head ?? "HEAD";
+  return s.changes.length ? `${name}*` : name;
+});
+
+const syncLabel = computed(() => {
+  const s = git.status;
+  if (!s?.upstream) return "";
+  return [s.behind && `${s.behind}↓`, s.ahead && `${s.ahead}↑`].filter(Boolean).join(" ");
+});
 </script>
 
 <template>
   <footer class="statusbar">
-    <span v-if="workspace.root" class="item" :title="workspace.root">{{ workspace.root }}</span>
+    <template v-if="git.status">
+      <button
+        class="item"
+        :title="git.status.branch ? `当前分支：${git.status.branch}（点击切换）` : '游离 HEAD（点击切换分支）'"
+        @click="pickBranch()"
+      >
+        <Icon name="branch" />{{ branchLabel }}
+      </button>
+      <button
+        v-if="git.status.branch"
+        class="item"
+        :class="{ spinning: git.busy > 0 }"
+        :title="git.status.upstream ? `与 ${git.status.upstream} 同步` : '发布分支'"
+        :disabled="git.busy > 0"
+        @click="git.status.upstream ? sync() : remote('publish')"
+      >
+        <Icon name="sync" />{{ syncLabel }}
+      </button>
+    </template>
+    <span v-if="workspace.root" class="item path" :title="workspace.root">{{ workspace.root }}</span>
     <span class="spacer"></span>
     <template v-if="tab">
       <span class="item">
@@ -39,8 +73,30 @@ const tab = computed(activeTab);
   flex: 1;
 }
 .item {
+  flex: none;
+  gap: 4px;
+  height: 100%;
   padding: 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.item.path {
+  flex: 0 1 auto;
+}
+button.item:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--fg-strong);
+}
+.item .icon {
+  width: 14px;
+  height: 14px;
+}
+.spinning .icon {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

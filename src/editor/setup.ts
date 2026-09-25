@@ -1,5 +1,5 @@
 import { basicSetup } from "codemirror";
-import { EditorState, Facet, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Facet, type Extension } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { LanguageDescription, type LanguageSupport } from "@codemirror/language";
@@ -10,6 +10,9 @@ import { themeExtension } from "./theme";
 export const tabId = Facet.define<number, number>({
   combine: (values) => values[0] ?? -1,
 });
+
+/** 与 Git 版本对比时放入行内差异视图，平时为空 */
+export const diffCompartment = new Compartment();
 
 /**
  * 语言包按需加载：language-data 里的每种语言都是独立的动态 import，
@@ -30,6 +33,7 @@ export function createEditorState(
   doc: string,
   language: LanguageSupport | null,
   listener: Extension,
+  extra: Extension = [],
 ): EditorState {
   return EditorState.create({
     doc,
@@ -39,6 +43,8 @@ export function createEditorState(
       keymap.of([indentWithTab]),
       themeExtension,
       language ?? [],
+      diffCompartment.of([]),
+      extra,
       listener,
     ],
   });

@@ -1,11 +1,12 @@
 import { reactive } from "vue";
-import type { EditorState, StateEffect, Text } from "@codemirror/state";
+import { EditorState, type StateEffect, type Text, type TransactionSpec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as fsApi from "../api/fs";
 import { baseName, dirName, isUnder } from "../api/fs";
 import { createEditorState, loadLanguage, tabId } from "../editor/setup";
+import { getEditorView } from "../editor/view";
 import { promptInput, toast } from "./ui";
 
 export interface Tab {
@@ -15,6 +16,10 @@ export interface Tab {
   dirty: boolean;
   language: string;
   eol: "LF" | "CRLF";
+  /** 正在与 Git 中的版本对比：rev 为 "HEAD" 或 ""（暂存区），rel 是仓库内的相对路径 */
+  diff: { rev: string; rel: string; label: string } | null;
+  /** 只读标签页（比如历史提交里的文件版本），path 是虚拟路径，不对应磁盘文件 */
+  readonly?: boolean;
 }
 
 // 编辑器状态不放进响应式对象：EditorState 体积大且不可变，没必要让 Vue 去代理。
@@ -31,6 +36,10 @@ export const workspace = reactive({
   cursor: { line: 1, col: 1, selected: 0 },
   /** 目录版本号，变化时文件树重新读取该目录 */
   dirVersions: {} as Record<string, number>,
+  /** 文件被保存、新建、删除、重命名时加一，Git 面板据此刷新 */
+  fsVersion: 0,
+  /** 加一时文件树里所有展开的目录都重新读取（比如切换分支后） */
+  treeVersion: 0,
 });
 
 const editorListener = EditorView.updateListener.of((u) => {
@@ -48,6 +57,18 @@ export const getState = (id: number) => states.get(id);
 export const findTab = (id: number | null) => workspace.tabs.find((t) => t.id === id);
 export const activeTab = () => findTab(workspace.active);
 export const hasDirty = () => workspace.tabs.some((t) => t.dirty);
+export const findTabByPath = (path: string) => workspace.tabs.find((t) => t.path === path);
+
+/** 修改某个标签页的编辑器状态；当前显示的标签页通过 EditorView 派发，其余的直接替换保存的状态 */
+export function updateTabState(id: number, spec: TransactionSpec) {
+  const view = getEditorView();
+  if (view && view.state.facet(tabId) === id) {
+    view.dispatch(spec);
+    return;
+  }
+  const state = states.get(id);
+  if (state) states.set(id, state.update(spec).state);
+}
 
 export function updateCursor(state: EditorState) {
   const head = state.selection.main.head;
@@ -143,6 +164,7 @@ export async function openFile(path: string) {
       dirty: false,
       language: lang.name,
       eol: crlf > 0 && crlf * 2 >= lf ? "CRLF" : "LF",
+      diff: null,
     });
     workspace.active = id;
   } catch (e) {
@@ -150,14 +172,53 @@ export async function openFile(path: string) {
   }
 }
 
+/**
+ * 打开一个只读的虚拟标签页，内容由调用方给出。
+ * path 用来区分标签页（同一个 path 只打开一次），fileName 用来选择语法高亮。
+ */
+export async function openVirtualFile(path: string, name: string, fileName: string, content: string) {
+  const existing = workspace.tabs.find((t) => t.path === path);
+  if (existing) {
+    workspace.active = existing.id;
+    return existing;
+  }
+  const lang = await loadLanguage(fileName);
+  const opened = workspace.tabs.find((t) => t.path === path);
+  if (opened) {
+    workspace.active = opened.id;
+    return opened;
+  }
+  const id = nextTabId++;
+  const state = createEditorState(id, content, lang.support, editorListener, [
+    EditorState.readOnly.of(true),
+  ]);
+  states.set(id, state);
+  savedDocs.set(id, state.doc);
+  const index = workspace.tabs.findIndex((t) => t.id === workspace.active);
+  workspace.tabs.splice(index + 1, 0, {
+    id,
+    path,
+    name,
+    dirty: false,
+    language: lang.name,
+    eol: content.includes("\r\n") ? "CRLF" : "LF",
+    diff: null,
+    readonly: true,
+  });
+  workspace.active = id;
+  return findTab(id)!;
+}
+
 export async function saveFile(id = workspace.active) {
   const tab = findTab(id);
   const state = id != null ? states.get(id) : undefined;
   if (!tab || !state) return false;
+  if (tab.readonly) return true;
   const doc = state.doc;
   try {
     await fsApi.writeFile(tab.path, doc.sliceString(0, doc.length, tab.eol === "CRLF" ? "\r\n" : "\n"));
     savedDocs.set(tab.id, doc);
+    workspace.fsVersion++;
     // 写盘期间用户可能继续输入了
     tab.dirty = !states.get(tab.id)!.doc.eq(doc);
     return true;
@@ -165,6 +226,29 @@ export async function saveFile(id = workspace.active) {
     toast(`保存失败：${e}`);
     return false;
   }
+}
+
+/** 文件在外部被改动（比如 Git 放弃更改、切换分支）后，重新读取没有未保存修改的标签页 */
+export async function reloadCleanTabs() {
+  await Promise.all(
+    workspace.tabs
+      .filter((t) => !t.dirty && !t.readonly)
+      .map(async (tab) => {
+        let content: string;
+        try {
+          content = await fsApi.readFile(tab.path);
+        } catch {
+          return; // 文件被删除或无法读取时保留原内容
+        }
+        const state = states.get(tab.id);
+        if (!state || tab.dirty || state.doc.toString() === content.replace(/\r\n?/g, "\n")) return;
+        // 用一次整体替换来更新，撤销历史里可以找回之前的内容
+        updateTabState(tab.id, { changes: { from: 0, to: state.doc.length, insert: content } });
+        const doc = states.get(tab.id)!.doc;
+        savedDocs.set(tab.id, doc);
+        tab.dirty = false;
+      }),
+  );
 }
 
 export async function saveAll() {
@@ -220,6 +304,11 @@ export function cycleTab(delta: number) {
 
 export function refreshDir(dir: string) {
   workspace.dirVersions[dir] = (workspace.dirVersions[dir] ?? 0) + 1;
+  workspace.fsVersion++;
+}
+
+export function refreshTree() {
+  workspace.treeVersion++;
 }
 
 export async function newEntry(dir: string, isDir: boolean) {

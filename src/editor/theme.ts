@@ -67,6 +67,33 @@ const editorTheme = EditorView.theme(
       color: "var(--menu-hover-fg)",
     },
     ".cm-completionMatchedText": { textDecoration: "none", color: "var(--hl)", fontWeight: "600" },
+
+    // 与 Git 版本对比时的行内差异（@codemirror/merge），选择器和它的基础主题保持一致以便覆盖
+    "&.cm-merge-b .cm-changedLine": { backgroundColor: "var(--diff-inserted-line)" },
+    "&.cm-merge-b .cm-changedText": { background: "var(--diff-inserted-text)" },
+    ".cm-deletedChunk": { backgroundColor: "var(--diff-removed-line)" },
+    "& .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText": {
+      background: "var(--diff-removed-text)",
+    },
+    "&.cm-merge-b .cm-changedLineGutter": { background: "var(--git-added)" },
+    "& .cm-deletedLineGutter": { background: "var(--git-deleted)" },
+    ".cm-deletedChunk .cm-chunkButtons button[name=reject]": {
+      padding: "0 8px",
+      border: "1px solid var(--border-input)",
+      borderRadius: "var(--radius)",
+      background: "var(--bg-input)",
+      color: "var(--fg)",
+      font: "12px var(--font-ui)",
+      lineHeight: "18px",
+    },
+    ".cm-deletedChunk .cm-chunkButtons button[name=reject]:hover": {
+      background: "var(--hover)",
+      color: "var(--fg-strong)",
+    },
+    "& .cm-collapsedLines": {
+      color: "var(--fg-muted)",
+      background: "var(--hover)",
+    },
   },
   { dark: true },
 );

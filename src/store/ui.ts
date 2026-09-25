@@ -6,6 +6,13 @@ export interface MenuItem {
   danger?: boolean;
 }
 
+/** 快速选择列表里的一项 */
+export interface PickItem {
+  label: string;
+  detail?: string;
+  run: () => void;
+}
+
 export const ui = reactive({
   prompt: null as null | {
     title: string;
@@ -15,12 +22,22 @@ export const ui = reactive({
   menu: null as null | { x: number; y: number; items: MenuItem[] },
   toast: null as null | { text: string; id: number },
   /** 快速打开面板：text 以 ">" 开头是命令，":" 开头是跳转行，否则搜索文件 */
-  palette: null as null | { text: string; id: number },
+  palette: null as null | {
+    text: string;
+    id: number;
+    /** 有值时面板变成通用的选择列表，按 label 过滤 */
+    pick?: { placeholder: string; items: PickItem[] };
+  },
 });
 
 let paletteId = 0;
 export function openPalette(text = "") {
   ui.palette = { text, id: ++paletteId };
+}
+
+/** 用快速打开面板让用户从列表中选一项 */
+export function openPicker(placeholder: string, items: PickItem[]) {
+  ui.palette = { text: "", id: ++paletteId, pick: { placeholder, items } };
 }
 
 export function closePalette() {

@@ -2,7 +2,7 @@
 import { defineAsyncComponent, onBeforeUnmount, onMounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { newWindow, takeInitialOpen } from "./api/fs";
-import { clamp, layout, startDrag } from "./store/layout";
+import { clamp, layout, startDrag, toggleView } from "./store/layout";
 import { terminal, toggleTerminal } from "./store/terminal";
 import { openPalette, toast } from "./store/ui";
 import {
@@ -20,6 +20,7 @@ import CodeEditor from "./components/CodeEditor.vue";
 import EditorTabs from "./components/EditorTabs.vue";
 import Overlays from "./components/Overlays.vue";
 import QuickOpen from "./components/QuickOpen.vue";
+import ScmView from "./components/ScmView.vue";
 import Sidebar from "./components/Sidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import TitleBar from "./components/TitleBar.vue";
@@ -47,6 +48,8 @@ function onKeyDown(e: KeyboardEvent) {
   if (ctrl && e.code === "Backquote") toggleTerminal();
   else if (ctrl && e.shiftKey && key === "n") newWindow().catch(toast);
   else if (ctrl && !e.shiftKey && key === "b") layout.sidebarVisible = !layout.sidebarVisible;
+  else if (ctrl && e.shiftKey && key === "e") toggleView("explorer");
+  else if (ctrl && e.shiftKey && key === "g") toggleView("scm");
   else if (ctrl && key === "p") openPalette(e.shiftKey ? ">" : "");
   else if (inTerminal) return;
   else if (ctrl && !e.shiftKey && key === "g") openPalette(":");
@@ -65,7 +68,7 @@ function onKeyDown(e: KeyboardEvent) {
 
 // 只在编辑器和输入框里保留系统右键菜单（剪切/复制/粘贴）；终端自己处理右键
 function onContextMenu(e: MouseEvent) {
-  if (!(e.target as Element).closest(".cm-editor, input")) e.preventDefault();
+  if (!(e.target as Element).closest(".cm-editor, input, textarea")) e.preventDefault();
 }
 
 let unlistenClose: (() => void) | undefined;
@@ -99,7 +102,11 @@ onBeforeUnmount(() => {
       <ActivityBar />
 
       <template v-if="layout.sidebarVisible">
-        <Sidebar class="side" :style="{ width: `${layout.sidebarWidth}px` }" />
+        <!-- 两个视图都保留，切换时资源管理器的展开状态不会丢失 -->
+        <div class="side" :style="{ width: `${layout.sidebarWidth}px` }">
+          <Sidebar v-show="layout.sidebarView === 'explorer'" />
+          <ScmView v-show="layout.sidebarView === 'scm'" />
+        </div>
         <div class="sash" @mousedown="resizeSidebar"></div>
       </template>
 

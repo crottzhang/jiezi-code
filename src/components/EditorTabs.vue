@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
-import { showMenu } from "../store/ui";
+import { closeDiff, git } from "../store/git";
+import { showFileHistory } from "../store/history";
+import { showMenu, type MenuItem } from "../store/ui";
 import { closeTab, workspace, type Tab } from "../store/workspace";
 
 const bar = ref<HTMLElement>();
@@ -23,11 +25,14 @@ async function closeOthers(keep: Tab) {
 }
 
 function onContextMenu(e: MouseEvent, tab: Tab) {
-  showMenu(e, [
+  const items: MenuItem[] = [
     { label: "关闭", action: () => closeTab(tab.id) },
     { label: "关闭其他", action: () => closeOthers(tab) },
     { label: "复制路径", action: () => navigator.clipboard.writeText(tab.path) },
-  ]);
+  ];
+  if (tab.diff) items.push({ label: "关闭对比", action: () => closeDiff(tab.id) });
+  if (git.status) items.push({ label: "查看文件历史", action: () => showFileHistory(tab.path) });
+  showMenu(e, items);
 }
 </script>
 
@@ -44,6 +49,15 @@ function onContextMenu(e: MouseEvent, tab: Tab) {
       @contextmenu="onContextMenu($event, tab)"
     >
       <span class="name">{{ tab.name }}</span>
+      <button
+        v-if="tab.diff"
+        class="diff"
+        :title="`正在与${tab.diff.label}对比，点击关闭对比`"
+        @mousedown.stop
+        @click.stop="closeDiff(tab.id)"
+      >
+        ↔ {{ tab.diff.label }}
+      </button>
       <button class="close" @mousedown.stop @click.stop="closeTab(tab.id)">
         <span class="dot">●</span><span class="x">×</span>
       </button>
@@ -77,6 +91,19 @@ function onContextMenu(e: MouseEvent, tab: Tab) {
   background: var(--tab-active-bg);
   color: var(--fg-strong);
   box-shadow: inset 0 1px 0 var(--tab-indicator);
+}
+.diff {
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.diff:hover {
+  background: var(--hover);
+  color: var(--fg-strong);
+  text-decoration: line-through;
 }
 .close {
   width: 20px;

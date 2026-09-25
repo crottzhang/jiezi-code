@@ -6,12 +6,15 @@ import { openSearchPanel } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
 import { newWindow } from "./api/fs";
 import { getEditorView } from "./editor/view";
-import { layout } from "./store/layout";
+import { commit, git, pickBranch, refreshGit, remote, sync } from "./store/git";
+import { showFileHistory } from "./store/history";
+import { layout, toggleView } from "./store/layout";
 import { newTerminal, terminal, toggleTerminal } from "./store/terminal";
 import { openPalette, toast } from "./store/ui";
 import { setTheme, theme } from "./theme";
 import { themes } from "./theme/themes";
 import {
+  activeTab,
   closeFolder,
   closeTab,
   newEntry,
@@ -43,6 +46,7 @@ function editorCommand(fn: (view: EditorView) => boolean) {
 
 const hasFolder = () => workspace.root != null;
 const hasEditor = () => workspace.active != null;
+const hasRepo = () => git.status != null;
 
 async function showAbout() {
   const version = await getVersion();
@@ -92,8 +96,42 @@ export const commands: Command[] = [
     run: () => (layout.sidebarVisible = !layout.sidebarVisible),
     checked: () => layout.sidebarVisible,
   },
+  {
+    id: "view.explorer",
+    label: "资源管理器",
+    keys: "Ctrl+Shift+E",
+    run: () => toggleView("explorer"),
+    checked: () => layout.sidebarVisible && layout.sidebarView === "explorer",
+  },
+  {
+    id: "view.scm",
+    label: "源代码管理",
+    keys: "Ctrl+Shift+G",
+    run: () => toggleView("scm"),
+    checked: () => layout.sidebarVisible && layout.sidebarView === "scm",
+  },
   { id: "view.terminal", label: "终端", keys: "Ctrl+`", run: toggleTerminal, checked: () => terminal.visible },
   { id: "terminal.new", label: "新建终端", run: newTerminal },
+
+  { id: "git.commit", label: "Git：提交", run: () => commit(), enabled: hasRepo },
+  { id: "git.amend", label: "Git：修改上次提交", run: () => commit(true), enabled: hasRepo },
+  { id: "git.checkout", label: "Git：切换分支…", run: pickBranch, enabled: hasRepo },
+  { id: "git.pull", label: "Git：拉取", run: () => remote("pull"), enabled: hasRepo },
+  {
+    id: "git.push",
+    label: "Git：推送",
+    run: () => remote(git.status?.upstream ? "push" : "publish"),
+    enabled: hasRepo,
+  },
+  { id: "git.sync", label: "Git：同步（拉取并推送）", run: sync, enabled: hasRepo },
+  { id: "git.fetch", label: "Git：抓取", run: () => remote("fetch"), enabled: hasRepo },
+  { id: "git.refresh", label: "Git：刷新", run: refreshGit, enabled: hasRepo },
+  {
+    id: "git.fileHistory",
+    label: "Git：查看当前文件的历史",
+    run: () => showFileHistory(activeTab()!.path),
+    enabled: () => hasRepo() && hasEditor(),
+  },
 
   ...themes.map((t) => ({
     id: `theme.${t.id}`,
