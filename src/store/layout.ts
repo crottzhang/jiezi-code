@@ -12,11 +12,12 @@ function load() {
 
 const saved = load();
 
-export type SidebarView = "explorer" | "scm";
+export type SidebarView = "explorer" | "search" | "scm";
+const VIEWS: SidebarView[] = ["explorer", "search", "scm"];
 
 export const layout = reactive({
   sidebarVisible: (saved.sidebarVisible as boolean) ?? true,
-  sidebarView: (saved.sidebarView as SidebarView) === "scm" ? "scm" : ("explorer" as SidebarView),
+  sidebarView: (VIEWS.includes(saved.sidebarView) ? saved.sidebarView : "explorer") as SidebarView,
   sidebarWidth: (saved.sidebarWidth as number) || 260,
   panelWidth: (saved.panelWidth as number) || 480,
   /** 光标所在行末尾显示 Git 作者信息 */

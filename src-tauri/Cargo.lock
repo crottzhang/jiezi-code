@@ -1654,9 +1654,11 @@ dependencies = [
 name = "jiezi-code"
 version = "0.1.0"
 dependencies = [
+ "globset",
  "ignore",
  "notify-debouncer-mini",
  "portable-pty",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

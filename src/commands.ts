@@ -29,6 +29,7 @@ import { showOutput } from "./store/output";
 import { popLatestStash, stashChanges } from "./store/stash";
 import { showFileHistory } from "./store/history";
 import { layout, toggleView } from "./store/layout";
+import { openSearch } from "./store/search";
 import { newTerminal, terminal, toggleTerminal } from "./store/terminal";
 import { openPalette, toast } from "./store/ui";
 import { setTheme, theme } from "./theme";
@@ -97,6 +98,8 @@ export const commands: Command[] = [
   { id: "edit.undo", label: "撤销", keys: "Ctrl+Z", run: editorCommand(undo), enabled: hasEditor },
   { id: "edit.redo", label: "重做", keys: "Ctrl+Y", run: editorCommand(redo), enabled: hasEditor },
   { id: "edit.find", label: "查找/替换", keys: "Ctrl+F", run: editorCommand(openSearchPanel), enabled: hasEditor },
+  { id: "edit.findInFiles", label: "在文件中查找", keys: "Ctrl+Shift+F", run: () => openSearch() },
+  { id: "edit.replaceInFiles", label: "在文件中替换", keys: "Ctrl+Shift+H", run: () => openSearch(true) },
   { id: "edit.selectAll", label: "全选", keys: "Ctrl+A", run: editorCommand(selectAll), enabled: hasEditor },
   {
     id: "edit.toggleComment",
@@ -123,6 +126,13 @@ export const commands: Command[] = [
     keys: "Ctrl+Shift+E",
     run: () => toggleView("explorer"),
     checked: () => layout.sidebarVisible && layout.sidebarView === "explorer",
+  },
+  {
+    id: "view.search",
+    label: "搜索",
+    keys: "Ctrl+Shift+F",
+    run: () => toggleView("search"),
+    checked: () => layout.sidebarVisible && layout.sidebarView === "search",
   },
   {
     id: "view.scm",

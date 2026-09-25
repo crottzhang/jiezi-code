@@ -21,6 +21,10 @@ const PATHS = {
   inline: "M2.5 3.5h11v9h-11zM2.5 8h11",
   output: "M3 4h10M3 8h10M3 12h6",
   stash: "M2.5 6.5h11v6h-11zM4.5 6.5V4h7v2.5",
+  replace: "M3 5h7.5M8.5 3l2 2-2 2M13 11H5.5M7.5 9l-2 2 2 2",
+  collapseAll: "M4.5 7.5 8 4l3.5 3.5M4.5 12 8 8.5l3.5 3.5",
+  expandAll: "M4.5 4 8 7.5 11.5 4M4.5 8.5 8 12l3.5-3.5",
+  clearAll: "M2.5 4h11M2.5 7.5h7M2.5 11h4M9.5 10l3.5 3.5M13 10l-3.5 3.5",
 } as const;
 
 defineProps<{ name: keyof typeof PATHS }>();

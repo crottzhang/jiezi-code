@@ -2,6 +2,7 @@ mod askpass;
 mod clipboard;
 mod fs;
 mod git;
+mod search;
 mod terminal;
 mod watch;
 mod window;
@@ -20,6 +21,7 @@ pub fn run() {
         .manage(window::PendingFolders::from_args())
         .manage(terminal::Terminals::default())
         .manage(watch::Watchers::default())
+        .manage(search::Searches::default())
         .setup(|app| {
             git::init(app.handle());
             askpass::start(app.handle().clone());
@@ -40,6 +42,9 @@ pub fn run() {
             fs::delete_entry,
             fs::list_files,
             watch::fs_watch,
+            search::search_text,
+            search::replace_in_files,
+            search::replace_changes,
             git::status::git_status,
             git::status::git_init,
             git::status::git_stage,

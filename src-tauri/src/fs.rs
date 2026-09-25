@@ -73,20 +73,22 @@ pub async fn read_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
-    // 先写临时文件再重命名，避免写到一半崩溃导致文件损坏
-    let target = Path::new(&path);
+    write_atomic(Path::new(&path), content.as_bytes()).map_err(err)
+}
+
+/// 先写临时文件再重命名，避免写到一半崩溃导致文件损坏
+pub(crate) fn write_atomic(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = target.with_extension(format!(
         "{}.jiezi-tmp",
         target.extension().and_then(|e| e.to_str()).unwrap_or("")
     ));
     {
-        let mut f = fs::File::create(&tmp).map_err(err)?;
-        f.write_all(content.as_bytes()).map_err(err)?;
-        f.sync_all().map_err(err)?;
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
     }
-    fs::rename(&tmp, target).map_err(|e| {
+    fs::rename(&tmp, target).inspect_err(|_| {
         let _ = fs::remove_file(&tmp);
-        err(e)
     })
 }
 

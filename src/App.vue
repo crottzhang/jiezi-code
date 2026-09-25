@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted } from "vue"
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { newWindow, takeInitialOpen } from "./api/fs";
 import { clamp, layout, startDrag, toggleView } from "./store/layout";
+import { openSearch } from "./store/search";
 import { terminal, toggleTerminal } from "./store/terminal";
 import { openPalette, toast } from "./store/ui";
 import {
@@ -23,6 +24,7 @@ import EditorTabs from "./components/EditorTabs.vue";
 import Overlays from "./components/Overlays.vue";
 import QuickOpen from "./components/QuickOpen.vue";
 import ScmView from "./components/ScmView.vue";
+import SearchView from "./components/SearchView.vue";
 import Sidebar from "./components/Sidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import TitleBar from "./components/TitleBar.vue";
@@ -58,6 +60,8 @@ function onKeyDown(e: KeyboardEvent) {
   else if (ctrl && !e.shiftKey && key === "b") layout.sidebarVisible = !layout.sidebarVisible;
   else if (ctrl && e.shiftKey && key === "e") toggleView("explorer");
   else if (ctrl && e.shiftKey && key === "g") toggleView("scm");
+  else if (ctrl && e.shiftKey && key === "f") openSearch();
+  else if (ctrl && e.shiftKey && key === "h") openSearch(true);
   else if (ctrl && key === "p") openPalette(e.shiftKey ? ">" : "");
   else if (inTerminal) return;
   else if (ctrl && !e.shiftKey && key === "g") openPalette(":");
@@ -110,9 +114,10 @@ onBeforeUnmount(() => {
       <ActivityBar />
 
       <template v-if="layout.sidebarVisible">
-        <!-- 两个视图都保留，切换时资源管理器的展开状态不会丢失 -->
+        <!-- 各视图都保留，切换时资源管理器的展开状态、搜索结果不会丢失 -->
         <div class="side" :style="{ width: `${layout.sidebarWidth}px` }">
           <Sidebar v-show="layout.sidebarView === 'explorer'" />
+          <SearchView v-show="layout.sidebarView === 'search'" />
           <ScmView v-show="layout.sidebarView === 'scm'" />
         </div>
         <div class="sash" @mousedown="resizeSidebar"></div>

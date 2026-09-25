@@ -18,6 +18,12 @@ const isActive = (view: string) => layout.sidebarVisible && layout.sidebarView =
         <path d="M6 7H4.5A1.5 1.5 0 0 0 3 8.5v11A1.5 1.5 0 0 0 4.5 21h9a1.5 1.5 0 0 0 1.5-1.5V17" />
       </svg>
     </button>
+    <button :class="{ active: isActive('search') }" title="搜索 (Ctrl+Shift+F)" @click="toggleView('search')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="10.5" cy="10.5" r="6" />
+        <path d="m15 15 5.5 5.5" />
+      </svg>
+    </button>
     <button :class="{ active: isActive('scm') }" title="源代码管理 (Ctrl+Shift+G)" @click="toggleView('scm')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
         <circle cx="7" cy="5" r="2" />
