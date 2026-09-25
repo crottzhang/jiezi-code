@@ -20,6 +20,16 @@ export interface Tab {
   diff: { rev: string; rel: string; label: string } | null;
   /** 只读标签页（比如历史提交里的文件版本），path 是虚拟路径，不对应磁盘文件 */
   readonly?: boolean;
+  /** 图片预览标签页：没有 EditorState，由 ImageView 显示。version 加一时重新读取图片 */
+  image?: { version: number; width: number; height: number; size: number };
+}
+
+/** 这些扩展名用图片预览打开（svg 是文本，和 VS Code 一样按文本打开） */
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
+
+export function isImageFile(path: string) {
+  const name = baseName(path).toLowerCase();
+  return IMAGE_EXTS.has(name.slice(name.lastIndexOf(".") + 1));
 }
 
 // 编辑器状态不放进响应式对象：EditorState 体积大且不可变，没必要让 Vue 去代理。
@@ -147,6 +157,10 @@ export async function openFile(path: string) {
     workspace.active = existing.id;
     return;
   }
+  if (isImageFile(path)) {
+    openImage(path);
+    return;
+  }
   try {
     const [content, lang] = await Promise.all([
       fsApi.readFile(path),
@@ -179,6 +193,24 @@ export async function openFile(path: string) {
   } catch (e) {
     toast(e);
   }
+}
+
+/** 图片按只读标签页打开，内容由 ImageView 读取，读取失败时在预览区里提示 */
+function openImage(path: string) {
+  const id = nextTabId++;
+  const index = workspace.tabs.findIndex((t) => t.id === workspace.active);
+  workspace.tabs.splice(index + 1, 0, {
+    id,
+    path,
+    name: baseName(path),
+    dirty: false,
+    language: "图片",
+    eol: "LF",
+    diff: null,
+    readonly: true,
+    image: { version: 0, width: 0, height: 0, size: 0 },
+  });
+  workspace.active = id;
 }
 
 /**
@@ -241,6 +273,9 @@ export async function saveFile(id = workspace.active) {
 /** paths 给出时只重新读取这些文件（小写比较），否则检查所有标签页 */
 export async function reloadCleanTabs(paths?: string[]) {
   const wanted = paths && new Set(paths.map((p) => p.toLowerCase()));
+  for (const tab of workspace.tabs) {
+    if (tab.image && (!wanted || wanted.has(tab.path.toLowerCase()))) tab.image.version++;
+  }
   await Promise.all(
     workspace.tabs
       .filter((t) => !t.dirty && !t.readonly && (!wanted || wanted.has(t.path.toLowerCase())))

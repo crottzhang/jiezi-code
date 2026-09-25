@@ -56,7 +56,11 @@ const progressLabel = computed(() => {
     </span>
     <span v-if="workspace.root" class="item path" :title="workspace.root">{{ workspace.root }}</span>
     <span class="spacer"></span>
-    <template v-if="tab">
+    <template v-if="tab?.image">
+      <span v-if="tab.image.width" class="item">{{ tab.image.width }} × {{ tab.image.height }}</span>
+      <span class="item">{{ tab.language }}</span>
+    </template>
+    <template v-else-if="tab">
       <span class="item">
         行 {{ workspace.cursor.line }}，列 {{ workspace.cursor.col }}
         <template v-if="workspace.cursor.selected">（已选择 {{ workspace.cursor.selected }}）</template>

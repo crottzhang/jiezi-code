@@ -71,6 +71,22 @@ pub async fn read_file(path: String) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "文件不是 UTF-8 编码，暂不支持打开".into())
 }
 
+/// 图片预览允许的最大文件大小
+const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024;
+
+/// 按原样读取文件字节（图片预览用），直接以二进制返回，不经过 JSON
+#[tauri::command]
+pub async fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, String> {
+    let size = fs::metadata(&path).map_err(err)?.len();
+    if size > MAX_IMAGE_SIZE {
+        return Err(format!(
+            "文件过大（{:.1} MB），暂不支持预览",
+            size as f64 / 1024.0 / 1024.0
+        ));
+    }
+    Ok(tauri::ipc::Response::new(fs::read(&path).map_err(err)?))
+}
+
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
     write_atomic(Path::new(&path), content.as_bytes()).map_err(err)

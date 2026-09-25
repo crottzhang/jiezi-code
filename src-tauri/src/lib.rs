@@ -36,6 +36,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fs::read_dir,
             fs::read_file,
+            fs::read_file_bytes,
             fs::write_file,
             fs::create_entry,
             fs::rename_entry,

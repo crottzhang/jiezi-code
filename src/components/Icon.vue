@@ -31,7 +31,20 @@ const PATHS = {
   newFolder: "M7.5 13.5h-5v-10h4l1.5 1.5h6v3M12 9v5M9.5 11.5h5",
   collapseFolders: "M5.5 3.5v-1h8v8h-1M2.5 5.5h8v8h-8zM4.5 9.5h4",
   chevronRight: "m6.5 4.5 3.5 3.5-3.5 3.5",
+  zoomIn: "M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9M10.3 10.3l3.2 3.2M7 5v4M5 7h4",
+  zoomOut: "M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9M10.3 10.3l3.2 3.2M5 7h4",
+  fitScreen: "M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3",
+  rotateLeft: "M3 8a5 5 0 1 0 1.5-3.55M3 2.5v3h3",
+  rotateRight: "M13 8a5 5 0 1 1-1.5-3.55M13 2.5v3h-3",
+  flipH: "M8 1.5v13M6 4 2 8l4 4zM10 4l4 4-4 4z",
+  flipV: "M1.5 8h13M4 6l4-4 4 4zM4 10l4 4 4-4z",
+  contrast: "M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z",
 } as const;
+
+/** 需要额外填充的部分，比如对比度图标的左半边 */
+const FILLS: Partial<Record<keyof typeof PATHS, string>> = {
+  contrast: "M8 2.5a5.5 5.5 0 0 0 0 11z",
+};
 
 defineProps<{ name: keyof typeof PATHS }>();
 </script>
@@ -47,6 +60,7 @@ defineProps<{ name: keyof typeof PATHS }>();
     stroke-linejoin="round"
   >
     <path :d="PATHS[name]" />
+    <path v-if="FILLS[name]" :d="FILLS[name]" fill="currentColor" stroke="none" />
   </svg>
 </template>
 

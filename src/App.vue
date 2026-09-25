@@ -35,6 +35,9 @@ import Welcome from "./components/Welcome.vue";
 const TerminalPanel = defineAsyncComponent(() => import("./components/TerminalPanel.vue"));
 // 左右并排对比（@codemirror/merge 的 MergeView）只在用到时加载
 const DiffSplitView = defineAsyncComponent(() => import("./components/DiffSplitView.vue"));
+// 图片预览同样按需加载
+const ImageView = defineAsyncComponent(() => import("./components/ImageView.vue"));
+const imageTab = computed(() => (activeTab()?.image ? activeTab() : undefined));
 // 光标所在行的 Git 作者信息
 import("./store/blame");
 
@@ -128,7 +131,8 @@ onBeforeUnmount(() => {
         <template v-if="workspace.active != null">
           <EditorTabs />
           <DiffBar />
-          <DiffSplitView v-if="splitDiff" />
+          <ImageView v-if="imageTab" :tab="imageTab" />
+          <DiffSplitView v-else-if="splitDiff" />
           <CodeEditor v-else />
         </template>
         <Welcome v-else />
