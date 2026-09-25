@@ -4,7 +4,14 @@ import { closeDiff } from "../store/diff";
 import { git } from "../store/git";
 import { showFileHistory } from "../store/history";
 import { showMenu, type MenuItem } from "../store/ui";
-import { closeTab, workspace, type Tab } from "../store/workspace";
+import {
+  closeTab,
+  isSvgFile,
+  openFile,
+  previewImage,
+  workspace,
+  type Tab,
+} from "../store/workspace";
 
 const bar = ref<HTMLElement>();
 
@@ -31,6 +38,14 @@ function onContextMenu(e: MouseEvent, tab: Tab) {
     { label: "关闭其他", action: () => closeOthers(tab) },
     { label: "复制路径", action: () => navigator.clipboard.writeText(tab.path) },
   ];
+  // svg 的文本和图片预览可以互相切换；只读的虚拟标签页（历史版本等）不对应磁盘文件，不提供
+  if (isSvgFile(tab.path) && (tab.image || !tab.readonly)) {
+    items.push(
+      tab.image
+        ? { label: "打开源文件", action: () => openFile(tab.path) }
+        : { label: "预览图片", action: () => previewImage(tab.path) },
+    );
+  }
   if (tab.diff) items.push({ label: "关闭对比", action: () => closeDiff(tab.id) });
   if (git.status) items.push({ label: "查看文件历史", action: () => showFileHistory(tab.path) });
   showMenu(e, items);

@@ -27,10 +27,17 @@ export interface Tab {
 /** 这些扩展名用图片预览打开（svg 是文本，和 VS Code 一样按文本打开） */
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
 
-export function isImageFile(path: string) {
+const extOf = (path: string) => {
   const name = baseName(path).toLowerCase();
-  return IMAGE_EXTS.has(name.slice(name.lastIndexOf(".") + 1));
-}
+  return name.slice(name.lastIndexOf(".") + 1);
+};
+
+export const isImageFile = (path: string) => IMAGE_EXTS.has(extOf(path));
+/** 可以通过右键菜单“预览图片”打开的文件：svg 平时按文本打开 */
+export const isSvgFile = (path: string) => extOf(path) === "svg";
+
+/** svg 的预览和文本可能同时打开，预览标签页的名字加上前缀以示区分 */
+const imageTabName = (path: string) => (isSvgFile(path) ? `预览 ${baseName(path)}` : baseName(path));
 
 // 编辑器状态不放进响应式对象：EditorState 体积大且不可变，没必要让 Vue 去代理。
 // 只有一个 EditorView，切换标签页时换上对应的 EditorState（撤销历史也跟着保留）。
@@ -70,7 +77,8 @@ export const getState = (id: number) => states.get(id);
 export const findTab = (id: number | null) => workspace.tabs.find((t) => t.id === id);
 export const activeTab = () => findTab(workspace.active);
 export const hasDirty = () => workspace.tabs.some((t) => t.dirty);
-export const findTabByPath = (path: string) => workspace.tabs.find((t) => t.path === path);
+/** 按路径找编辑用的标签页；svg 的图片预览和文本可能同时打开，这里只找文本的那个 */
+export const findTabByPath = (path: string) => workspace.tabs.find((t) => t.path === path && !t.image);
 
 /** 修改某个标签页的编辑器状态；当前显示的标签页通过 EditorView 派发，其余的直接替换保存的状态 */
 export function updateTabState(id: number, spec: TransactionSpec) {
@@ -152,13 +160,13 @@ export async function openFolderInNewWindow(path?: string | null) {
 // ---------------- 标签页 ----------------
 
 export async function openFile(path: string) {
-  const existing = workspace.tabs.find((t) => t.path === path);
-  if (existing) {
-    workspace.active = existing.id;
+  if (isImageFile(path)) {
+    previewImage(path);
     return;
   }
-  if (isImageFile(path)) {
-    openImage(path);
+  const existing = findTabByPath(path);
+  if (existing) {
+    workspace.active = existing.id;
     return;
   }
   try {
@@ -167,7 +175,7 @@ export async function openFile(path: string) {
       loadLanguage(baseName(path)),
     ]);
     // 等待期间可能已经被打开（比如连点两次）
-    const opened = workspace.tabs.find((t) => t.path === path);
+    const opened = findTabByPath(path);
     if (opened) {
       workspace.active = opened.id;
       return;
@@ -196,13 +204,18 @@ export async function openFile(path: string) {
 }
 
 /** 图片按只读标签页打开，内容由 ImageView 读取，读取失败时在预览区里提示 */
-function openImage(path: string) {
+export function previewImage(path: string) {
+  const existing = workspace.tabs.find((t) => t.path === path && t.image);
+  if (existing) {
+    workspace.active = existing.id;
+    return;
+  }
   const id = nextTabId++;
   const index = workspace.tabs.findIndex((t) => t.id === workspace.active);
   workspace.tabs.splice(index + 1, 0, {
     id,
     path,
-    name: baseName(path),
+    name: imageTabName(path),
     dirty: false,
     language: "图片",
     eol: "LF",
@@ -382,7 +395,7 @@ export async function renamePath(path: string) {
     for (const tab of workspace.tabs) {
       if (isUnder(tab.path, path)) {
         tab.path = newPath + tab.path.slice(path.length);
-        tab.name = baseName(tab.path);
+        tab.name = tab.image ? imageTabName(tab.path) : baseName(tab.path);
       }
     }
   } catch (e) {

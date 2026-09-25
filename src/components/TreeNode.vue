@@ -8,8 +8,10 @@ import { showMenu, toast, type MenuItem } from "../store/ui";
 import {
   activeTab,
   deletePath,
+  isSvgFile,
   newEntry,
   openFile,
+  previewImage,
   renamePath,
   workspace,
 } from "../store/workspace";
@@ -118,6 +120,7 @@ function onContextMenu(e: MouseEvent) {
         { label: "新建文件夹", action: () => newEntry(path, true) },
       ]
     : [{ label: "打开", action: () => openFile(path) }];
+  if (!isDir && isSvgFile(path)) items.push({ label: "预览图片", action: () => previewImage(path) });
   if (!isDir && gitState.status && git.value !== "untracked") {
     items.push({ label: "查看文件历史", action: () => showFileHistory(path) });
   }

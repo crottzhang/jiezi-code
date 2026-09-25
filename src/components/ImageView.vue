@@ -17,6 +17,8 @@ const MIME: Record<string, string> = {
   bmp: "image/bmp",
   ico: "image/x-icon",
   avif: "image/avif",
+  // svg 必须带上类型，否则 <img> 不会按矢量图解析
+  svg: "image/svg+xml",
 };
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 32;
@@ -47,6 +49,8 @@ const background = ref<Background>(readBackground());
 const stageSize = ref({ width: 0, height: 0 });
 
 const info = computed(() => props.tab.image!);
+/** 矢量图放大后依然清晰，不需要按像素显示 */
+const isSvg = computed(() => props.tab.path.toLowerCase().endsWith(".svg"));
 const ready = computed(() => !!url.value && !!info.value.width && !error.value);
 /** 旋转 90° 或 270° 后宽高互换 */
 const turned = computed(() => rotation.value % 180 !== 0);
@@ -272,7 +276,7 @@ function formatSize(bytes: number) {
           <img
             ref="img"
             :src="url"
-            :class="{ pixelated: scale > 1 }"
+            :class="{ pixelated: scale > 1 && !isSvg }"
             :style="info.width ? imgStyle : undefined"
             draggable="false"
             @load="onLoad"
