@@ -1,6 +1,6 @@
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting, type TagStyle } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
+import { tagHighlighter, tags as t } from "@lezer/highlight";
 
 // 所有颜色都引用 CSS 变量（定义在 src/theme/themes.ts），切换主题时编辑器自动跟着变
 
@@ -147,7 +147,8 @@ const editorTheme = EditorView.theme(
   { dark: true },
 );
 
-const highlightStyle = HighlightStyle.define([
+/** 语法高亮规则：编辑器用它生成 HighlightStyle，Markdown 预览里的代码块也用同一套 */
+const syntaxRules: TagStyle[] = [
   { tag: [t.keyword, t.modifier, t.definitionKeyword, t.operatorKeyword], color: "var(--syn-keyword)" },
   { tag: [t.controlKeyword, t.moduleKeyword], color: "var(--syn-control)" },
   { tag: [t.name, t.deleted, t.character, t.macroName], color: "var(--syn-variable)" },
@@ -175,6 +176,22 @@ const highlightStyle = HighlightStyle.define([
   { tag: t.strikethrough, textDecoration: "line-through" },
   { tag: t.link, color: "var(--syn-regexp)", textDecoration: "underline" },
   { tag: t.invalid, color: "var(--syn-invalid)" },
-]);
+];
+
+const highlightStyle = HighlightStyle.define(syntaxRules);
 
 export const themeExtension = [editorTheme, syntaxHighlighting(highlightStyle)];
+
+/** 编辑器之外（Markdown 预览）给代码着色：每条规则对应一个 class，样式见 codeHighlightCss */
+export const codeHighlighter = tagHighlighter(
+  syntaxRules.map((rule, i) => ({ tag: rule.tag, class: `syn-${i}` })),
+);
+
+export const codeHighlightCss = syntaxRules
+  .map((rule, i) => {
+    const props = Object.entries(rule)
+      .filter(([key]) => key !== "tag")
+      .map(([key, value]) => `${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${value}`);
+    return `.syn-${i} { ${props.join("; ")} }`;
+  })
+  .join("\n");

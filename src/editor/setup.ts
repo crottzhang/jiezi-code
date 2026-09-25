@@ -31,6 +31,16 @@ export async function loadLanguage(fileName: string) {
   }
 }
 
+/** 按代码块标注的语言名（比如 ts、rust）加载语言包，找不到时返回 null */
+export async function loadLanguageByName(name: string) {
+  const desc = LanguageDescription.matchLanguageName(languages, name, true);
+  try {
+    return desc ? await desc.load() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function createEditorState(
   id: number,
   doc: string,

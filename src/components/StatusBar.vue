@@ -60,6 +60,7 @@ const progressLabel = computed(() => {
       <span v-if="tab.image.width" class="item">{{ tab.image.width }} × {{ tab.image.height }}</span>
       <span class="item">{{ tab.language }}</span>
     </template>
+    <span v-else-if="tab?.markdown" class="item">{{ tab.language }}</span>
     <template v-else-if="tab">
       <span class="item">
         行 {{ workspace.cursor.line }}，列 {{ workspace.cursor.col }}

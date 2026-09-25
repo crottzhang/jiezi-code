@@ -87,6 +87,31 @@ pub async fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, Strin
     Ok(tauri::ipc::Response::new(fs::read(&path).map_err(err)?))
 }
 
+/// 用系统默认程序打开网址（Markdown 预览里点击链接）。只接受 http、https、mailto
+#[tauri::command]
+pub async fn open_external(url: String) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if !["http://", "https://", "mailto:"].iter().any(|p| lower.starts_with(p)) {
+        return Err(format!("不支持打开这个链接：{url}"));
+    }
+    #[cfg(windows)]
+    let mut cmd = {
+        // 交给 url.dll 处理，不经过 cmd，网址里的 & 等字符不会被当成命令
+        let mut cmd = std::process::Command::new("rundll32");
+        cmd.args(["url.dll,FileProtocolHandler", &url]);
+        cmd
+    };
+    #[cfg(not(windows))]
+    let mut cmd = {
+        let mut cmd =
+            std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" });
+        cmd.arg(&url);
+        cmd
+    };
+    cmd.spawn().map_err(err)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
     write_atomic(Path::new(&path), content.as_bytes()).map_err(err)

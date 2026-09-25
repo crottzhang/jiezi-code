@@ -22,7 +22,12 @@ export interface Tab {
   readonly?: boolean;
   /** 图片预览标签页：没有 EditorState，由 ImageView 显示。version 加一时重新读取图片 */
   image?: { version: number; width: number; height: number; size: number };
+  /** Markdown 预览标签页：没有 EditorState，由 MarkdownView 显示。version 加一时重新渲染 */
+  markdown?: { version: number };
 }
+
+/** 预览标签页（图片、Markdown）：和同一文件的文本标签页可以同时打开 */
+export const isPreviewTab = (tab: Tab) => !!(tab.image || tab.markdown);
 
 /** 这些扩展名用图片预览打开（svg 是文本，和 VS Code 一样按文本打开） */
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
@@ -35,9 +40,12 @@ const extOf = (path: string) => {
 export const isImageFile = (path: string) => IMAGE_EXTS.has(extOf(path));
 /** 可以通过右键菜单“预览图片”打开的文件：svg 平时按文本打开 */
 export const isSvgFile = (path: string) => extOf(path) === "svg";
+/** 可以通过右键菜单“预览”打开的 Markdown 文件 */
+export const isMarkdownFile = (path: string) => ["md", "markdown"].includes(extOf(path));
 
-/** svg 的预览和文本可能同时打开，预览标签页的名字加上前缀以示区分 */
-const imageTabName = (path: string) => (isSvgFile(path) ? `预览 ${baseName(path)}` : baseName(path));
+/** 预览和文本可能同时打开（svg、Markdown），预览标签页的名字加上前缀以示区分 */
+const previewTabName = (tab: Pick<Tab, "path" | "markdown">) =>
+  tab.markdown || isSvgFile(tab.path) ? `预览 ${baseName(tab.path)}` : baseName(tab.path);
 
 // 编辑器状态不放进响应式对象：EditorState 体积大且不可变，没必要让 Vue 去代理。
 // 只有一个 EditorView，切换标签页时换上对应的 EditorState（撤销历史也跟着保留）。
@@ -77,8 +85,9 @@ export const getState = (id: number) => states.get(id);
 export const findTab = (id: number | null) => workspace.tabs.find((t) => t.id === id);
 export const activeTab = () => findTab(workspace.active);
 export const hasDirty = () => workspace.tabs.some((t) => t.dirty);
-/** 按路径找编辑用的标签页；svg 的图片预览和文本可能同时打开，这里只找文本的那个 */
-export const findTabByPath = (path: string) => workspace.tabs.find((t) => t.path === path && !t.image);
+/** 按路径找编辑用的标签页；预览和文本可能同时打开，这里只找文本的那个 */
+export const findTabByPath = (path: string) =>
+  workspace.tabs.find((t) => t.path === path && !isPreviewTab(t));
 
 /** 修改某个标签页的编辑器状态；当前显示的标签页通过 EditorView 派发，其余的直接替换保存的状态 */
 export function updateTabState(id: number, spec: TransactionSpec) {
@@ -203,9 +212,10 @@ export async function openFile(path: string) {
   }
 }
 
-/** 图片按只读标签页打开，内容由 ImageView 读取，读取失败时在预览区里提示 */
-export function previewImage(path: string) {
-  const existing = workspace.tabs.find((t) => t.path === path && t.image);
+/** 打开预览标签页（已打开时切换过去），插在当前标签页后面 */
+function openPreview(path: string, kind: Pick<Tab, "image" | "markdown" | "language">) {
+  const key = kind.image ? "image" : "markdown";
+  const existing = workspace.tabs.find((t) => t.path === path && t[key]);
   if (existing) {
     workspace.active = existing.id;
     return;
@@ -215,15 +225,24 @@ export function previewImage(path: string) {
   workspace.tabs.splice(index + 1, 0, {
     id,
     path,
-    name: imageTabName(path),
+    name: previewTabName({ path, markdown: kind.markdown }),
     dirty: false,
-    language: "图片",
     eol: "LF",
     diff: null,
     readonly: true,
-    image: { version: 0, width: 0, height: 0, size: 0 },
+    ...kind,
   });
   workspace.active = id;
+}
+
+/** 图片按只读标签页打开，内容由 ImageView 读取，读取失败时在预览区里提示 */
+export function previewImage(path: string) {
+  openPreview(path, { language: "图片", image: { version: 0, width: 0, height: 0, size: 0 } });
+}
+
+/** Markdown 预览；同一文件的文本标签页打开着时，显示的是编辑器里（可能未保存）的内容 */
+export function previewMarkdown(path: string) {
+  openPreview(path, { language: "Markdown 预览", markdown: { version: 0 } });
 }
 
 /**
@@ -286,12 +305,11 @@ export async function saveFile(id = workspace.active) {
 /** paths 给出时只重新读取这些文件（小写比较），否则检查所有标签页 */
 export async function reloadCleanTabs(paths?: string[]) {
   const wanted = paths && new Set(paths.map((p) => p.toLowerCase()));
-  for (const tab of workspace.tabs) {
-    if (tab.image && (!wanted || wanted.has(tab.path.toLowerCase()))) tab.image.version++;
-  }
+  const matches = (tab: Tab) => !wanted || wanted.has(tab.path.toLowerCase());
+  for (const tab of workspace.tabs) if (tab.image && matches(tab)) tab.image.version++;
   await Promise.all(
     workspace.tabs
-      .filter((t) => !t.dirty && !t.readonly && (!wanted || wanted.has(t.path.toLowerCase())))
+      .filter((t) => !t.dirty && !t.readonly && matches(t))
       .map(async (tab) => {
         let content: string;
         try {
@@ -308,6 +326,8 @@ export async function reloadCleanTabs(paths?: string[]) {
         tab.dirty = false;
       }),
   );
+  // Markdown 预览优先显示文本标签页里的内容，要等上面重新读取完再刷新
+  for (const tab of workspace.tabs) if (tab.markdown && matches(tab)) tab.markdown.version++;
 }
 
 export async function saveAll() {
@@ -395,7 +415,7 @@ export async function renamePath(path: string) {
     for (const tab of workspace.tabs) {
       if (isUnder(tab.path, path)) {
         tab.path = newPath + tab.path.slice(path.length);
-        tab.name = tab.image ? imageTabName(tab.path) : baseName(tab.path);
+        tab.name = isPreviewTab(tab) ? previewTabName(tab) : baseName(tab.path);
       }
     }
   } catch (e) {

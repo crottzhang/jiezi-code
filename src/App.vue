@@ -38,6 +38,9 @@ const DiffSplitView = defineAsyncComponent(() => import("./components/DiffSplitV
 // 图片预览同样按需加载
 const ImageView = defineAsyncComponent(() => import("./components/ImageView.vue"));
 const imageTab = computed(() => (activeTab()?.image ? activeTab() : undefined));
+// Markdown 预览（连同 markdown-it）按需加载
+const MarkdownView = defineAsyncComponent(() => import("./components/MarkdownView.vue"));
+const markdownTab = computed(() => (activeTab()?.markdown ? activeTab() : undefined));
 // 光标所在行的 Git 作者信息
 import("./store/blame");
 
@@ -132,6 +135,7 @@ onBeforeUnmount(() => {
           <EditorTabs />
           <DiffBar />
           <ImageView v-if="imageTab" :tab="imageTab" />
+          <MarkdownView v-else-if="markdownTab" :tab="markdownTab" />
           <DiffSplitView v-else-if="splitDiff" />
           <CodeEditor v-else />
         </template>
