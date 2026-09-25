@@ -23,6 +23,7 @@ import DiffBar from "./components/DiffBar.vue";
 import EditorTabs from "./components/EditorTabs.vue";
 import Overlays from "./components/Overlays.vue";
 import QuickOpen from "./components/QuickOpen.vue";
+import RunView from "./components/RunView.vue";
 import ScmView from "./components/ScmView.vue";
 import SearchView from "./components/SearchView.vue";
 import Sidebar from "./components/Sidebar.vue";
@@ -60,6 +61,7 @@ function onKeyDown(e: KeyboardEvent) {
   else if (ctrl && !e.shiftKey && key === "b") layout.sidebarVisible = !layout.sidebarVisible;
   else if (ctrl && e.shiftKey && key === "e") toggleView("explorer");
   else if (ctrl && e.shiftKey && key === "g") toggleView("scm");
+  else if (ctrl && e.shiftKey && key === "d") toggleView("run");
   else if (ctrl && e.shiftKey && key === "f") openSearch();
   else if (ctrl && e.shiftKey && key === "h") openSearch(true);
   else if (ctrl && key === "p") openPalette(e.shiftKey ? ">" : "");
@@ -113,15 +115,14 @@ onBeforeUnmount(() => {
     <div class="main">
       <ActivityBar />
 
-      <template v-if="layout.sidebarVisible">
-        <!-- 各视图都保留，切换时资源管理器的展开状态、搜索结果不会丢失 -->
-        <div class="side" :style="{ width: `${layout.sidebarWidth}px` }">
-          <Sidebar v-show="layout.sidebarView === 'explorer'" />
-          <SearchView v-show="layout.sidebarView === 'search'" />
-          <ScmView v-show="layout.sidebarView === 'scm'" />
-        </div>
-        <div class="sash" @mousedown="resizeSidebar"></div>
-      </template>
+      <!-- 收起侧边栏和切换视图都只是隐藏：资源管理器的展开状态、搜索结果、运行中的终端都不会丢 -->
+      <div v-show="layout.sidebarVisible" class="side" :style="{ width: `${layout.sidebarWidth}px` }">
+        <Sidebar v-show="layout.sidebarView === 'explorer'" />
+        <SearchView v-show="layout.sidebarView === 'search'" />
+        <ScmView v-show="layout.sidebarView === 'scm'" />
+        <RunView v-show="layout.sidebarView === 'run'" />
+      </div>
+      <div v-show="layout.sidebarVisible" class="sash" @mousedown="resizeSidebar"></div>
 
       <div class="editor-area">
         <template v-if="workspace.active != null">

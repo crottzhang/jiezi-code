@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { closeTerminal, newTerminal, terminal } from "../store/terminal";
+import { closeTerminal, markExited, newTerminal, terminal } from "../store/terminal";
 import TempImages from "./TempImages.vue";
 import TerminalView from "./TerminalView.vue";
 </script>
@@ -42,6 +42,8 @@ import TerminalView from "./TerminalView.vue";
         :key="s.key"
         :info="s"
         :active="terminal.visible && s.key === terminal.active"
+        @exited="markExited(s.key)"
+        @close="closeTerminal(s.key)"
       />
     </div>
     <Teleport to="body">

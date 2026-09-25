@@ -141,6 +141,13 @@ export const commands: Command[] = [
     run: () => toggleView("scm"),
     checked: () => layout.sidebarVisible && layout.sidebarView === "scm",
   },
+  {
+    id: "view.run",
+    label: "运行",
+    keys: "Ctrl+Shift+D",
+    run: () => toggleView("run"),
+    checked: () => layout.sidebarVisible && layout.sidebarView === "run",
+  },
   { id: "view.terminal", label: "终端", keys: "Ctrl+`", run: toggleTerminal, checked: () => terminal.visible },
   { id: "terminal.new", label: "新建终端", run: newTerminal },
 

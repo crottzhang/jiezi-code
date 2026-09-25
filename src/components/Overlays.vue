@@ -35,7 +35,7 @@ watch(
     const el = input.value!;
     el.focus();
     // 重命名时只选中文件名，不选扩展名
-    const dot = prompt.secret ? -1 : prompt.value.lastIndexOf(".");
+    const dot = prompt.secret || prompt.selectAll ? -1 : prompt.value.lastIndexOf(".");
     el.setSelectionRange(0, dot > 0 ? dot : prompt.value.length);
   },
 );

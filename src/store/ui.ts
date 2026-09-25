@@ -30,6 +30,8 @@ export const ui = reactive({
     /** 密码类输入，隐藏内容 */
     secret: boolean;
     placeholder: string;
+    /** 全选初始内容；否则像重命名文件一样只选中扩展名之前的部分 */
+    selectAll: boolean;
     resolve: (value: string | null) => void;
   },
   menu: null as null | { x: number; y: number; items: MenuItem[] },
@@ -66,7 +68,7 @@ export function closePalette() {
 export function promptInput(
   title: string,
   value = "",
-  options: { secret?: boolean; placeholder?: string } = {},
+  options: { secret?: boolean; placeholder?: string; selectAll?: boolean } = {},
 ): Promise<string | null> {
   ui.prompt?.resolve(null);
   return new Promise((resolve) => {
@@ -75,6 +77,7 @@ export function promptInput(
       value,
       secret: options.secret ?? false,
       placeholder: options.placeholder ?? "",
+      selectAll: options.selectAll ?? false,
       resolve: (v) => {
         ui.prompt = null;
         resolve(v);

@@ -33,6 +33,11 @@ const isActive = (view: string) => layout.sidebarVisible && layout.sidebarView =
       </svg>
       <span v-if="changeCount" class="badge">{{ changeCount > 999 ? "999+" : changeCount }}</span>
     </button>
+    <button :class="{ active: isActive('run') }" title="运行 (Ctrl+Shift+D)" @click="toggleView('run')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+        <path d="M7 4.5v15l12-7.5z" />
+      </svg>
+    </button>
   </nav>
 </template>
 

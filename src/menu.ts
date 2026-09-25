@@ -81,6 +81,7 @@ export function buildAppMenu(): MenuNode[] {
         cmd("view.explorer"),
         cmd("view.search"),
         cmd("view.scm"),
+        cmd("view.run"),
         cmd("view.terminal"),
         cmd("terminal.new"),
         SEP,

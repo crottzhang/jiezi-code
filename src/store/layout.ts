@@ -12,8 +12,8 @@ function load() {
 
 const saved = load();
 
-export type SidebarView = "explorer" | "search" | "scm";
-const VIEWS: SidebarView[] = ["explorer", "search", "scm"];
+export type SidebarView = "explorer" | "search" | "scm" | "run";
+const VIEWS: SidebarView[] = ["explorer", "search", "scm", "run"];
 
 export const layout = reactive({
   sidebarVisible: (saved.sidebarVisible as boolean) ?? true,

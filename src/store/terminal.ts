@@ -4,6 +4,8 @@ export interface TermInfo {
   key: number;
   title: string;
   exited: boolean;
+  /** 运行视图启动的终端：shell 就绪后自动输入这条命令 */
+  command?: string;
 }
 
 export const terminal = reactive({
@@ -55,9 +57,14 @@ function focusEditor() {
   document.querySelector<HTMLElement>(".cm-content")?.focus();
 }
 
+/** 终端面板和运行视图的终端共用一套编号，聚焦、粘贴都按编号找 */
+export const nextTerminalKey = () => ++seq;
+
+let panelSeq = 0;
+
 export function newTerminal() {
-  const key = ++seq;
-  terminal.sessions.push({ key, title: `PowerShell ${key}`, exited: false });
+  const key = nextTerminalKey();
+  terminal.sessions.push({ key, title: `PowerShell ${++panelSeq}`, exited: false });
   terminal.active = key;
   terminal.visible = true;
 }

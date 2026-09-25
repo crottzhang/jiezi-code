@@ -11,9 +11,7 @@ import {
 } from "../api/terminal";
 import { saveClipboardImage } from "../api/clipboard";
 import {
-  closeTerminal,
   focusTerminal,
-  markExited,
   quotePath,
   registerTerminal,
   terminal,
@@ -25,6 +23,8 @@ import type { MenuNode } from "../menu";
 import MenuList from "./MenuList.vue";
 
 const props = defineProps<{ info: TermInfo; active: boolean }>();
+// 退出、关闭由父组件处理：终端面板和运行视图各自管理自己的终端列表
+const emit = defineEmits<{ exited: []; close: [] }>();
 
 const host = ref<HTMLElement>();
 let term: Terminal;
@@ -35,6 +35,20 @@ let disposed = false;
 // ConPTY 启动时会先发光标位置查询（ESC[6n）并等待回复，这可能早于 term_spawn 返回 id，
 // 所以拿到 id 之前的输入先缓存，否则回复丢失会导致 PowerShell 一直卡住
 let pending: string[] = [];
+
+// 运行面板开的终端：等 shell 启动时的输出停下来再输入命令，
+// 以免命令混在 ConPTY 启动握手（光标位置查询的回复）之前
+let startCommand = props.info.command ?? null;
+let startTimer: number | undefined;
+
+function onShellOutput() {
+  if (startCommand == null) return;
+  clearTimeout(startTimer);
+  startTimer = window.setTimeout(() => {
+    if (startCommand != null && !props.info.exited) runCommand(startCommand);
+    startCommand = null;
+  }, 200);
+}
 
 // xterm.js 不认 CSS 变量，主题切换时手动更新
 watch(
@@ -178,7 +192,7 @@ onMounted(async () => {
 
   term.attachCustomKeyEventHandler(handleKey);
   term.onData((data) => {
-    if (props.info.exited) closeTerminal(props.info.key);
+    if (props.info.exited) emit("close");
     else if (id != null) writeTerminal(id, data).catch(() => {});
     else pending.push(data);
   });
@@ -196,9 +210,12 @@ onMounted(async () => {
       cwd: workspace.root,
       cols: term.cols,
       rows: term.rows,
-      onData: (data) => term.write(data),
+      onData: (data) => {
+        term.write(data);
+        onShellOutput();
+      },
       onExit: (code) => {
-        markExited(props.info.key);
+        emit("exited");
         term.write(`\r\n\x1b[90m[进程已退出，代码 ${code}] 按任意键关闭终端\x1b[0m\r\n`);
       },
     });
@@ -212,7 +229,7 @@ onMounted(async () => {
     // 启动期间面板尺寸可能变过
     resizeTerminal(id, term.cols, term.rows).catch(() => {});
   } catch (e) {
-    markExited(props.info.key);
+    emit("exited");
     term.write(`\x1b[31m启动终端失败：${e}\x1b[0m\r\n`);
   }
 });
@@ -226,6 +243,7 @@ watch(
 
 onBeforeUnmount(() => {
   disposed = true;
+  clearTimeout(startTimer);
   registerTerminal(props.info.key, null);
   resizeObserver?.disconnect();
   if (id != null) killTerminalProcess(id).catch(() => {});
