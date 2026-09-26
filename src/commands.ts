@@ -32,6 +32,7 @@ import { showFileHistory } from "./store/history";
 import { layout, toggleView } from "./store/layout";
 import { openSearch } from "./store/search";
 import { newTerminal, terminal, toggleTerminal } from "./store/terminal";
+import { openPortsTool } from "./store/tools";
 import { openPalette, toast } from "./store/ui";
 import { setTheme, theme } from "./theme";
 import { themes } from "./theme/themes";
@@ -230,6 +231,8 @@ export const commands: Command[] = [
     run: () => setTheme(t.id),
     checked: () => theme.id === t.id,
   })),
+
+  { id: "tools.ports", label: "工具：端口占用…", run: openPortsTool },
 
   { id: "help.about", label: "关于 Jiezi Code", run: showAbout },
 ];

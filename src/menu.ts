@@ -131,6 +131,7 @@ export function buildAppMenu(): MenuNode[] {
         cmd("git.refresh"),
       ],
     },
+    { label: "工具", children: [{ ...cmd("tools.ports"), label: "端口占用…" }] },
     { label: "帮助", children: [cmd("help.about")] },
   ];
 }

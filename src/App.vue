@@ -5,6 +5,7 @@ import { newWindow, takeInitialOpen } from "./api/fs";
 import { clamp, layout, startDrag, toggleView } from "./store/layout";
 import { openSearch } from "./store/search";
 import { terminal, toggleTerminal } from "./store/terminal";
+import { tools } from "./store/tools";
 import { openPalette, toast } from "./store/ui";
 import {
   activeTab,
@@ -43,6 +44,8 @@ const imageTab = computed(() => (activeTab()?.image ? activeTab() : undefined));
 // Markdown 预览（连同 markdown-it）按需加载
 const MarkdownView = defineAsyncComponent(() => import("./components/MarkdownView.vue"));
 const markdownTab = computed(() => (activeTab()?.markdown ? activeTab() : undefined));
+// 工具菜单里的小工具按需加载
+const PortsTool = defineAsyncComponent(() => import("./components/PortsTool.vue"));
 // 光标所在行的 Git 作者信息
 import("./store/blame");
 
@@ -159,6 +162,7 @@ onBeforeUnmount(() => {
     </div>
     <StatusBar />
     <QuickOpen />
+    <PortsTool v-if="tools.ports" />
     <Overlays />
   </div>
 </template>

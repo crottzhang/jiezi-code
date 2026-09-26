@@ -3,6 +3,7 @@ mod clipboard;
 mod fs;
 mod git;
 mod notes;
+mod ports;
 mod search;
 mod terminal;
 mod watch;
@@ -104,6 +105,8 @@ pub fn run() {
             notes::note_save,
             notes::note_pin,
             notes::note_delete,
+            ports::port_list,
+            ports::process_kill,
             terminal::term_write,
             terminal::term_resize,
             terminal::term_kill,
