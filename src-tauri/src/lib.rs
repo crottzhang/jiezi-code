@@ -8,7 +8,7 @@ mod terminal;
 mod watch;
 mod window;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, WebviewWindowBuilder, WindowEvent};
 
 /// git/ssh 把本程序当作 askpass 启动时，只回答问题然后退出，不打开窗口
 pub fn askpass_client() -> Option<i32> {
@@ -27,6 +27,13 @@ pub fn run() {
         .setup(|app| {
             git::init(app.handle());
             askpass::start(app.handle().clone());
+            // 主窗口在配置里设了 create: false，改在这里创建：配置文件开不了剪贴板权限，
+            // 不开的话右键“粘贴”调用 navigator.clipboard.readText() 会弹出 WebView2 的授权提示
+            for config in &app.config().app.windows {
+                WebviewWindowBuilder::from_config(app, config)?
+                    .enable_clipboard_access()
+                    .build()?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

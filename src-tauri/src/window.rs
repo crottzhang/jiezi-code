@@ -67,6 +67,7 @@ pub async fn new_window(
         .inner_size(1200.0, 800.0)
         .min_inner_size(600.0, 400.0)
         .decorations(false)
+        .enable_clipboard_access()
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
