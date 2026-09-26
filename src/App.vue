@@ -24,6 +24,7 @@ import DiffBar from "./components/DiffBar.vue";
 import EditorTabs from "./components/EditorTabs.vue";
 import Overlays from "./components/Overlays.vue";
 import QuickOpen from "./components/QuickOpen.vue";
+import NotesView from "./components/NotesView.vue";
 import RunView from "./components/RunView.vue";
 import ScmView from "./components/ScmView.vue";
 import SearchView from "./components/SearchView.vue";
@@ -130,6 +131,7 @@ onBeforeUnmount(() => {
         <SearchView v-show="layout.sidebarView === 'search'" />
         <ScmView v-show="layout.sidebarView === 'scm'" />
         <RunView v-show="layout.sidebarView === 'run'" />
+        <NotesView v-show="layout.sidebarView === 'notes'" />
       </div>
       <div v-show="layout.sidebarVisible" class="sash" @mousedown="resizeSidebar"></div>
 

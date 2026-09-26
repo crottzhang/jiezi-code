@@ -5,6 +5,7 @@ import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as fsApi from "../api/fs";
 import { baseName, dirName, isUnder } from "../api/fs";
+import { notePath, saveNote, type Note } from "../api/notes";
 import { createEditorState, loadLanguage, tabId } from "../editor/setup";
 import { getEditorView } from "../editor/view";
 import { promptInput, toast } from "./ui";
@@ -24,10 +25,14 @@ export interface Tab {
   image?: { version: number; width: number; height: number; size: number };
   /** Markdown 预览标签页：没有 EditorState，由 MarkdownView 显示。version 加一时重新渲染 */
   markdown?: { version: number };
+  /** 笔记标签页：内容保存到笔记数据库，path 是虚拟路径 note:<id> */
+  note?: { id: number };
 }
 
 /** 预览标签页（图片、Markdown）：和同一文件的文本标签页可以同时打开 */
 export const isPreviewTab = (tab: Tab) => !!(tab.image || tab.markdown);
+/** 可编辑的磁盘文件：只读的虚拟标签页和笔记都不对应磁盘文件 */
+export const isFileTab = (tab: Tab) => !tab.readonly && !tab.note;
 
 /** 这些扩展名用图片预览打开（svg 是文本，和 VS Code 一样按文本打开） */
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
@@ -43,14 +48,17 @@ export const isSvgFile = (path: string) => extOf(path) === "svg";
 /** 可以通过右键菜单“预览”打开的 Markdown 文件 */
 export const isMarkdownFile = (path: string) => ["md", "markdown"].includes(extOf(path));
 
-/** 预览和文本可能同时打开（svg、Markdown），预览标签页的名字加上前缀以示区分 */
-const previewTabName = (tab: Pick<Tab, "path" | "markdown">) =>
-  tab.markdown || isSvgFile(tab.path) ? `预览 ${baseName(tab.path)}` : baseName(tab.path);
+/** 预览和文本可能同时打开（svg、Markdown），预览标签页的名字加上前缀以示区分；笔记没有文件名，用标题 */
+const previewTabName = (tab: Pick<Tab, "path" | "markdown">, title = baseName(tab.path)) =>
+  tab.markdown || isSvgFile(tab.path) ? `预览 ${title}` : title;
 
 // 编辑器状态不放进响应式对象：EditorState 体积大且不可变，没必要让 Vue 去代理。
 // 只有一个 EditorView，切换标签页时换上对应的 EditorState（撤销历史也跟着保留）。
 const states = new Map<number, EditorState>();
 const savedDocs = new Map<number, Text>();
+/** 笔记停止输入一会儿后自动保存 */
+const NOTE_AUTOSAVE_MS = 1000;
+const noteSaveTimers = new Map<number, ReturnType<typeof setTimeout>>();
 export const scrollSnapshots = new Map<number, StateEffect<unknown>>();
 let nextTabId = 1;
 
@@ -77,6 +85,7 @@ const editorListener = EditorView.updateListener.of((u) => {
     const saved = savedDocs.get(id);
     // 只读标签页（历史版本、输出日志）的内容由程序更新，不算未保存
     if (tab && saved && !tab.readonly) tab.dirty = !u.state.doc.eq(saved);
+    if (tab?.note) scheduleNoteSave(id);
   }
   if (u.docChanged || u.selectionSet) updateCursor(u.state);
 });
@@ -213,7 +222,7 @@ export async function openFile(path: string) {
 }
 
 /** 打开预览标签页（已打开时切换过去），插在当前标签页后面 */
-function openPreview(path: string, kind: Pick<Tab, "image" | "markdown" | "language">) {
+function openPreview(path: string, kind: Pick<Tab, "image" | "markdown" | "language">, title?: string) {
   const key = kind.image ? "image" : "markdown";
   const existing = workspace.tabs.find((t) => t.path === path && t[key]);
   if (existing) {
@@ -225,7 +234,7 @@ function openPreview(path: string, kind: Pick<Tab, "image" | "markdown" | "langu
   workspace.tabs.splice(index + 1, 0, {
     id,
     path,
-    name: previewTabName({ path, markdown: kind.markdown }),
+    name: previewTabName({ path, markdown: kind.markdown }, title),
     dirty: false,
     eol: "LF",
     diff: null,
@@ -240,9 +249,9 @@ export function previewImage(path: string) {
   openPreview(path, { language: "图片", image: { version: 0, width: 0, height: 0, size: 0 } });
 }
 
-/** Markdown 预览；同一文件的文本标签页打开着时，显示的是编辑器里（可能未保存）的内容 */
-export function previewMarkdown(path: string) {
-  openPreview(path, { language: "Markdown 预览", markdown: { version: 0 } });
+/** Markdown 预览；同一文件的文本标签页打开着时，显示的是编辑器里（可能未保存）的内容。title 用于笔记 */
+export function previewMarkdown(path: string, title?: string) {
+  openPreview(path, { language: "Markdown 预览", markdown: { version: 0 } }, title);
 }
 
 /**
@@ -282,6 +291,71 @@ export async function openVirtualFile(path: string, name: string, fileName: stri
   return findTab(id)!;
 }
 
+// ---------------- 笔记 ----------------
+
+/** 在标签页里编辑笔记（已打开时切换过去），用 Markdown 高亮 */
+export async function openNoteTab(note: Note) {
+  const path = notePath(note.id);
+  const existing = findTabByPath(path);
+  if (existing) {
+    workspace.active = existing.id;
+    return;
+  }
+  const lang = await loadLanguage("note.md");
+  const opened = findTabByPath(path);
+  if (opened) {
+    workspace.active = opened.id;
+    return;
+  }
+  const id = nextTabId++;
+  const state = createEditorState(id, note.content, lang.support, editorListener);
+  states.set(id, state);
+  savedDocs.set(id, state.doc);
+  const index = workspace.tabs.findIndex((t) => t.id === workspace.active);
+  workspace.tabs.splice(index + 1, 0, {
+    id,
+    path,
+    name: note.title,
+    dirty: false,
+    language: "笔记",
+    eol: "LF",
+    diff: null,
+    note: { id: note.id },
+  });
+  workspace.active = id;
+}
+
+/** 笔记在别处（比如另一个窗口）保存后，更新标签页标题；没有未保存修改时换成新内容 */
+export function syncNoteTabs(note: Note) {
+  const path = notePath(note.id);
+  for (const tab of workspace.tabs.filter((t) => t.path === path)) {
+    tab.name = tab.markdown ? previewTabName(tab, note.title) : note.title;
+    if (tab.markdown) tab.markdown.version++;
+    const state = states.get(tab.id);
+    if (!tab.note || tab.dirty || !state || state.doc.toString() === note.content) continue;
+    updateTabState(tab.id, { changes: { from: 0, to: state.doc.length, insert: note.content } });
+    savedDocs.set(tab.id, states.get(tab.id)!.doc);
+    tab.dirty = false;
+  }
+}
+
+/** 笔记被删除后关掉它的标签页（包括预览），不再询问保存 */
+export function dropNoteTabs(noteId: number) {
+  const path = notePath(noteId);
+  for (const tab of workspace.tabs.filter((t) => t.path === path)) dropTab(tab.id);
+}
+
+function scheduleNoteSave(id: number) {
+  clearTimeout(noteSaveTimers.get(id));
+  noteSaveTimers.set(
+    id,
+    setTimeout(() => {
+      noteSaveTimers.delete(id);
+      if (findTab(id)?.dirty) saveFile(id);
+    }, NOTE_AUTOSAVE_MS),
+  );
+}
+
 export async function saveFile(id = workspace.active) {
   const tab = findTab(id);
   const state = id != null ? states.get(id) : undefined;
@@ -289,9 +363,19 @@ export async function saveFile(id = workspace.active) {
   if (tab.readonly) return true;
   const doc = state.doc;
   try {
-    await fsApi.writeFile(tab.path, doc.sliceString(0, doc.length, tab.eol === "CRLF" ? "\r\n" : "\n"));
+    if (tab.note) {
+      clearTimeout(noteSaveTimers.get(tab.id));
+      const meta = await saveNote(tab.note.id, doc.toString());
+      for (const t of workspace.tabs) {
+        if (t.path === tab.path) t.name = t.markdown ? previewTabName(t, meta.title) : meta.title;
+      }
+    } else {
+      await fsApi.writeFile(tab.path, doc.sliceString(0, doc.length, tab.eol === "CRLF" ? "\r\n" : "\n"));
+      workspace.fsVersion++;
+    }
+    // 保存期间标签页可能已被关掉（比如笔记在另一个窗口被删除）
+    if (!states.has(tab.id)) return true;
     savedDocs.set(tab.id, doc);
-    workspace.fsVersion++;
     // 写盘期间用户可能继续输入了
     tab.dirty = !states.get(tab.id)!.doc.eq(doc);
     return true;
@@ -309,7 +393,7 @@ export async function reloadCleanTabs(paths?: string[]) {
   for (const tab of workspace.tabs) if (tab.image && matches(tab)) tab.image.version++;
   await Promise.all(
     workspace.tabs
-      .filter((t) => !t.dirty && !t.readonly && matches(t))
+      .filter((t) => !t.dirty && isFileTab(t) && matches(t))
       .map(async (tab) => {
         let content: string;
         try {
@@ -334,8 +418,9 @@ export async function saveAll() {
   for (const tab of workspace.tabs.filter((t) => t.dirty)) await saveFile(tab.id);
 }
 
-/** 有未保存修改时询问用户，返回 false 表示用户取消 */
+/** 有未保存修改时询问用户，返回 false 表示用户取消。笔记直接保存，不询问 */
 export async function confirmDiscard(tabs: Tab[]) {
+  for (const tab of tabs) if (tab.note && tab.dirty && !(await saveFile(tab.id))) return false;
   const dirty = tabs.filter((t) => t.dirty);
   if (dirty.length === 0) return true;
   const text =
@@ -367,6 +452,8 @@ function dropTab(id: number) {
   states.delete(id);
   savedDocs.delete(id);
   scrollSnapshots.delete(id);
+  clearTimeout(noteSaveTimers.get(id));
+  noteSaveTimers.delete(id);
   if (workspace.active === id) {
     workspace.active = (workspace.tabs[index] ?? workspace.tabs[index - 1])?.id ?? null;
   }
@@ -443,6 +530,6 @@ export async function deletePath(path: string) {
 /** 在系统文件管理器中显示，不传路径时显示当前标签页的文件 */
 export function revealInExplorer(path?: string) {
   const tab = activeTab();
-  const target = path ?? (tab && !tab.readonly ? tab.path : undefined);
+  const target = path ?? (tab && isFileTab(tab) ? tab.path : undefined);
   if (target) fsApi.revealPath(target).catch(toast);
 }

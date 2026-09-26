@@ -2,7 +2,9 @@
 import { nextTick, ref, watch } from "vue";
 import { closeDiff } from "../store/diff";
 import { git } from "../store/git";
+import { noteIdOf } from "../api/notes";
 import { showFileHistory } from "../store/history";
+import { openNote } from "../store/notes";
 import { openInTerminal } from "../store/terminal";
 import { SEPARATOR, showMenu, type MenuItem } from "../store/ui";
 import {
@@ -38,11 +40,19 @@ async function closeOthers(keep: Tab) {
 }
 
 function onContextMenu(e: MouseEvent, tab: Tab) {
+  const noteId = noteIdOf(tab.path);
   const items: MenuItem[] = [
     { label: "关闭", action: () => closeTab(tab.id) },
     { label: "关闭其他", action: () => closeOthers(tab) },
-    { label: "复制路径", action: () => navigator.clipboard.writeText(tab.path) },
   ];
+  // 笔记不对应磁盘文件，只能在笔记和它的预览之间切换
+  if (noteId != null) {
+    if (tab.markdown) items.push({ label: "打开笔记", action: () => openNote(noteId) });
+    else items.push({ label: "打开预览", action: () => previewMarkdown(tab.path, tab.name) });
+    showMenu(e, items);
+    return;
+  }
+  items.push({ label: "复制路径", action: () => navigator.clipboard.writeText(tab.path) });
   // svg、Markdown 的文本和预览可以互相切换；只读的虚拟标签页（历史版本等）不对应磁盘文件，不提供
   if (isPreviewTab(tab)) {
     if (tab.markdown || isSvgFile(tab.path)) {
@@ -73,7 +83,7 @@ function onContextMenu(e: MouseEvent, tab: Tab) {
       :key="tab.id"
       class="tab"
       :class="{ active: tab.id === workspace.active, dirty: tab.dirty }"
-      :title="tab.path"
+      :title="noteIdOf(tab.path) != null ? `笔记：${tab.name}` : tab.path"
       @mousedown.left="workspace.active = tab.id"
       @mouseup.middle="closeTab(tab.id)"
       @contextmenu="onContextMenu($event, tab)"

@@ -5,6 +5,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import MarkdownIt from "markdown-it";
 import { highlightCode } from "@lezer/highlight";
 import { dirName, openExternal, readFile, readFileBytes } from "../api/fs";
+import { getNote, noteIdOf } from "../api/notes";
 import { loadLanguageByName } from "../editor/setup";
 import { codeHighlightCss, codeHighlighter } from "../editor/theme";
 import { toast } from "../store/ui";
@@ -68,7 +69,9 @@ let seq = 0;
 async function source() {
   const textTab = findTabByPath(props.tab.path);
   const state = textTab && getState(textTab.id);
-  return state ? state.doc.toString() : readFile(props.tab.path);
+  if (state) return state.doc.toString();
+  const noteId = noteIdOf(props.tab.path);
+  return noteId != null ? (await getNote(noteId)).content : readFile(props.tab.path);
 }
 
 async function render(restoreScroll: boolean) {

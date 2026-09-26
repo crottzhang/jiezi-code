@@ -20,13 +20,13 @@ cargo test git::tests::stash_round_trip     # single test by path
 cargo clippy
 ```
 
-There are no frontend tests. Rust tests live in `src-tauri/src/git/tests.rs` plus `#[cfg(test)]` modules in `search.rs`, `watch.rs`, and `askpass.rs`. The git tests create real temporary repos (`TempRepo` in `tests.rs`) and shell out to the system `git`, so git must be on PATH.
+There are no frontend tests. Rust tests live in `src-tauri/src/git/tests.rs` plus `#[cfg(test)]` modules in `search.rs`, `watch.rs`, `askpass.rs`, and `notes.rs` (in-memory SQLite). The git tests create real temporary repos (`TempRepo` in `tests.rs`) and shell out to the system `git`, so git must be on PATH.
 
 ## Architecture
 
 ### Frontend ↔ backend boundary
 - Every Rust command is registered in the `generate_handler!` list in `src-tauri/src/lib.rs`. Adding a command means: write the `#[tauri::command]` fn, register it there, and add a typed wrapper in `src/api/*.ts` (camelCase args are converted to snake_case by Tauri). Components and stores call `src/api/*`, never `invoke` directly.
-- Streaming data uses `tauri::ipc::Channel` passed as a command argument (terminal output as raw bytes, git remote/clone progress). Broadcast notifications use events: `fs-changed` (watcher → `store/git.ts`, `store/search.ts`), `git-output` (every git command → `store/output.ts`), `git-askpass` (credential prompt → `store/git.ts`).
+- Streaming data uses `tauri::ipc::Channel` passed as a command argument (terminal output as raw bytes, git remote/clone progress). Broadcast notifications use events: `fs-changed` (watcher → `store/git.ts`, `store/search.ts`), `git-output` (every git command → `store/output.ts`), `git-askpass` (credential prompt → `store/git.ts`), `notes-changed` (any window edits a note → `store/notes.ts`).
 - Multi-window: all windows run in one process. Per-window resources (terminals, file watchers) are keyed by window label and cleaned up in `on_window_event(Destroyed)`; events targeting one window use `emit_to(label, …)`. New windows are labelled `win-*` and must match `capabilities/default.json`.
 
 ### Git integration (`src-tauri/src/git/`)

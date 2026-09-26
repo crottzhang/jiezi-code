@@ -38,6 +38,13 @@ const isActive = (view: string) => layout.sidebarVisible && layout.sidebarView =
         <path d="M7 4.5v15l12-7.5z" />
       </svg>
     </button>
+    <button :class="{ active: isActive('notes') }" title="笔记" @click="toggleView('notes')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 11V5.5A1.5 1.5 0 0 0 16.5 4h-10A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20H11" />
+        <path d="M8.5 8.5h6M8.5 12h4" />
+        <path d="m18.5 13.5 2 2-5.5 5.5h-2v-2z" />
+      </svg>
+    </button>
   </nav>
 </template>
 

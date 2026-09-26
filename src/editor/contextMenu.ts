@@ -7,6 +7,7 @@ import { showFileHistory } from "../store/history";
 import { openInTerminal } from "../store/terminal";
 import { openPalette, SEPARATOR, showMenu, toast, type MenuItem } from "../store/ui";
 import {
+  isFileTab,
   isMarkdownFile,
   isSvgFile,
   previewImage,
@@ -96,8 +97,12 @@ export function showEditorMenu(e: MouseEvent, view: EditorView, tab?: Tab) {
     );
   }
 
-  // 只读的虚拟标签页（历史版本、Git 输出）不对应磁盘文件，不提供文件相关的操作
-  if (tab && !tab.readonly) {
+  if (tab?.note) {
+    items.push(SEPARATOR, { label: "打开预览", action: () => previewMarkdown(tab.path, tab.name) });
+  }
+
+  // 只读的虚拟标签页（历史版本、Git 输出）和笔记不对应磁盘文件，不提供文件相关的操作
+  if (tab && isFileTab(tab)) {
     const rel = git.status ? relPath(tab.path) : null;
     items.push(SEPARATOR);
     if (isMarkdownFile(tab.path)) items.push({ label: "打开预览", action: () => previewMarkdown(tab.path) });

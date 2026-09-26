@@ -36,6 +36,7 @@ export function buildAppMenu(): MenuNode[] {
       children: [
         cmd("file.newFile"),
         cmd("file.newFolder"),
+        cmd("notes.new"),
         SEP,
         cmd("file.openFolder"),
         {
@@ -84,6 +85,7 @@ export function buildAppMenu(): MenuNode[] {
         cmd("view.search"),
         cmd("view.scm"),
         cmd("view.run"),
+        cmd("view.notes"),
         cmd("view.terminal"),
         cmd("terminal.new"),
         SEP,

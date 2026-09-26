@@ -2,6 +2,7 @@ mod askpass;
 mod clipboard;
 mod fs;
 mod git;
+mod notes;
 mod search;
 mod terminal;
 mod watch;
@@ -22,6 +23,7 @@ pub fn run() {
         .manage(terminal::Terminals::default())
         .manage(watch::Watchers::default())
         .manage(search::Searches::default())
+        .manage(notes::Notes::default())
         .setup(|app| {
             git::init(app.handle());
             askpass::start(app.handle().clone());
@@ -89,6 +91,12 @@ pub fn run() {
             clipboard::read_clipboard_image,
             clipboard::delete_clipboard_images,
             clipboard::reveal_clipboard_image,
+            notes::note_list,
+            notes::note_get,
+            notes::note_create,
+            notes::note_save,
+            notes::note_pin,
+            notes::note_delete,
             terminal::term_write,
             terminal::term_resize,
             terminal::term_kill,

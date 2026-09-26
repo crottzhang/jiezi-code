@@ -25,6 +25,7 @@ import {
   sync,
   undoLastCommit,
 } from "./store/git";
+import { newNote } from "./store/notes";
 import { showOutput } from "./store/output";
 import { popLatestStash, stashChanges } from "./store/stash";
 import { showFileHistory } from "./store/history";
@@ -38,6 +39,7 @@ import {
   activeTab,
   closeFolder,
   closeTab,
+  isFileTab,
   newEntry,
   openFolder,
   revealInExplorer,
@@ -82,6 +84,7 @@ async function showAbout() {
 export const commands: Command[] = [
   { id: "file.newFile", label: "新建文件…", run: () => newEntry(workspace.root!, false), enabled: hasFolder },
   { id: "file.newFolder", label: "新建文件夹…", run: () => newEntry(workspace.root!, true), enabled: hasFolder },
+  { id: "notes.new", label: "新建笔记", run: newNote },
   { id: "file.openFolder", label: "打开文件夹…", keys: "Ctrl+O", run: () => openFolder() },
   { id: "file.newWindow", label: "新建窗口", keys: "Ctrl+Shift+N", run: () => newWindow().catch(toast) },
   { id: "file.save", label: "保存", keys: "Ctrl+S", run: () => saveFile(), enabled: hasEditor },
@@ -97,7 +100,7 @@ export const commands: Command[] = [
     label: "在文件资源管理器中显示",
     keys: "Shift+Alt+R",
     run: () => revealInExplorer(),
-    enabled: () => hasEditor() && !activeTab()!.readonly,
+    enabled: () => hasEditor() && isFileTab(activeTab()!),
   },
   { id: "file.closeEditor", label: "关闭编辑器", keys: "Ctrl+W", run: () => closeTab(), enabled: hasEditor },
   { id: "file.closeFolder", label: "关闭文件夹", run: closeFolder, enabled: hasFolder },
@@ -156,6 +159,12 @@ export const commands: Command[] = [
     run: () => toggleView("run"),
     checked: () => layout.sidebarVisible && layout.sidebarView === "run",
   },
+  {
+    id: "view.notes",
+    label: "笔记",
+    run: () => toggleView("notes"),
+    checked: () => layout.sidebarVisible && layout.sidebarView === "notes",
+  },
   { id: "view.terminal", label: "终端", keys: "Ctrl+`", run: toggleTerminal, checked: () => terminal.visible },
   { id: "terminal.new", label: "新建终端", run: () => newTerminal() },
 
@@ -198,7 +207,7 @@ export const commands: Command[] = [
     id: "git.fileHistory",
     label: "Git：查看当前文件的历史",
     run: () => showFileHistory(activeTab()!.path),
-    enabled: () => hasRepo() && hasEditor(),
+    enabled: () => hasRepo() && hasEditor() && !activeTab()!.note,
   },
   {
     id: "git.blame",
